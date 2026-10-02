@@ -23,8 +23,7 @@ OCRMYPDF_VERSION=17.13.0
 APPLEOCR_VERSION=0.4.0
 PACKAGES_AS_OF=2026-10-02T00:00:00Z
 # Languages of the pinned plugin version; these are the recognized subfolder names.
-LANGUAGES="eng fra ita deu spa por chi_sim chi_tra yue_sim yue_tra kor jpn rus ukr tha vie
-  ara ars tur ind ces dan nld nor nno nob msa pol ron swe"
+LANGUAGES=$(<"$(dirname "$0")/languages.txt")
 
 die() { echo "error: $1" >&2; exit 2; }
 

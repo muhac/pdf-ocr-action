@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""A stand-in for the GitHub CLI, covering only what scripts/storage.sh uses for releases.
+
+State lives in $FAKE_GH_DIR:
+    releases/<tag>/body            release description (optional)
+    releases/<tag>/draft           present if the release is a draft
+    releases/<tag>/assets/<name>   attached files
+    releases/<tag>/labels/<name>   display label of an asset (optional)
+    calls.log                      one line per invocation
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+root = Path(os.environ["FAKE_GH_DIR"])
+args = sys.argv[1:]
+with open(root / "calls.log", "a") as log:
+    log.write(" ".join(args[:2]) + "\n")
+
+if not os.environ.get("GH_TOKEN"):
+    sys.exit("fake gh: GH_TOKEN is not set")
+
+
+def option(name):
+    return args[args.index(name) + 1]
+
+
+def releases():
+    result = []
+    for release in sorted((root / "releases").iterdir()):
+        body = release / "body"
+        labels = release / "labels"
+        assets = []
+        for asset in sorted((release / "assets").iterdir()):
+            label = labels / asset.name
+            assets.append({"name": asset.name, "label": label.read_text() if label.exists() else None})
+        result.append({
+            "tag_name": release.name,
+            "draft": (release / "draft").exists(),
+            "body": body.read_text() if body.exists() else None,
+            "assets": assets,
+        })
+    return result
+
+
+if args[0] == "api" and "/releases" in args[1]:
+    data = json.dumps(releases())
+    if "--jq" in args:
+        sys.exit(subprocess.run(["jq", "-r", option("--jq")], input=data, text=True).returncode)
+    print(data)
+elif args[:2] == ["release", "download"]:
+    shutil.copyfile(root / "releases" / args[2] / "assets" / option("--pattern"), option("--output"))
+elif args[:2] == ["release", "upload"]:
+    release = root / "releases" / args[2]
+    for arg in args[3:]:
+        if arg.startswith("--"):
+            break
+        path, _, label = arg.partition("#")
+        name = Path(path).name
+        shutil.copyfile(path, release / "assets" / name)
+        (release / "labels").mkdir(exist_ok=True)
+        if label:
+            (release / "labels" / name).write_text(label)
+else:
+    sys.exit(f"fake gh: unsupported command {args}")

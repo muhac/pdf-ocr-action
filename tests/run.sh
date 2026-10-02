@@ -182,6 +182,71 @@ STORAGE_DONE="scans/to do" "$storage" fetch "$work/job5" 2>/dev/null
 assert_status "inbox and done being the same folder exits 2" 2 $?
 unset STORAGE_URL STORAGE_INBOX STORAGE_DONE STORAGE_FAILED
 
+echo "# large files through releases"
+git init -q --bare -b main "$work/rel.git"
+git clone -q "$work/rel.git" "$work/rel-seed" 2>/dev/null
+mkdir -p "$work/rel-seed/inbox"
+touch "$work/rel-seed/inbox/.gitkeep"
+git -C "$work/rel-seed" add -A
+git -C "$work/rel-seed" -c user.name=test -c user.email=test@example.com commit -q -m "seed"
+git -C "$work/rel-seed" push -q origin HEAD:main
+
+export FAKE_GH_DIR="$work/fake-gh"
+releases="$FAKE_GH_DIR/releases"
+add_release() { # <tag> [description]
+  mkdir -p "$releases/$1/assets"
+  printf '%s' "${2:-}" > "$releases/$1/body"
+}
+add_release v-book1
+cp "$fixtures/english.pdf" "$releases/v-book1/assets/default.pdf"
+add_release v-book2 "chi_tra
+more notes"
+cp "$fixtures/traditional.pdf" "$releases/v-book2/assets/scan.pdf"
+mkdir -p "$releases/v-book2/labels"
+printf '繁體書.pdf' > "$releases/v-book2/labels/scan.pdf"
+add_release v-bad
+echo "not a pdf" > "$releases/v-bad/assets/broken.pdf"
+add_release v-done
+cp "$fixtures/english.pdf" "$releases/v-done/assets/old.pdf"
+echo "done" > "$releases/v-done/assets/old.ocr.log"
+add_release v-draft
+touch "$releases/v-draft/draft"
+cp "$fixtures/english.pdf" "$releases/v-draft/assets/draft.pdf"
+add_release v-result
+cp "$fixtures/english.pdf" "$releases/v-result/assets/only.ocr.pdf"
+
+run_release_service() { # <workdir>: what the OCR workflow does, against the fake GitHub CLI
+  (
+    export PATH="$root/tests/fake-gh:$PATH" STORAGE_REPO=test/storage STORAGE_TOKEN=test-token
+    export STORAGE_URL="$work/rel.git" OCR_LANGUAGE=eng OCR_RECOGNITION=accurate OCR_QUIET=true
+    "$storage" fetch "$1" || exit
+    "$ocr" "$1/input" "$1/output"
+    [ -d "$1/release-input" ] && "$ocr" "$1/release-input" "$1/release-output"
+    "$storage" save "$1"
+  ) 2>&1
+}
+log=$(run_release_service "$work/job-rel")
+assert_status "save with release files exits 0" 0 $?
+assert_contains "result is attached to the release" "$releases/v-book1/assets/default.ocr.pdf" "quickbrownfox"
+if [ "$(head -1 "$releases/v-book1/assets/default.ocr.log" 2>/dev/null)" = "done" ]; then pass "log says done"; else fail "log says done"; fi
+if sed -n 2p "$releases/v-book1/assets/default.ocr.log" 2>/dev/null | grep -q "eng"; then pass "log records the default language"; else fail "log records the default language"; fi
+# accurate mode cannot read Chinese as English, so this only passes if the description's language is used.
+assert_contains "language in the release description is used" "$releases/v-book2/assets/scan.ocr.pdf" "掃描版文件可以變成可搜尋的文件"
+if sed -n 2p "$releases/v-book2/assets/scan.ocr.log" 2>/dev/null | grep -q "chi_tra"; then pass "log records the release language"; else fail "log records the release language"; fi
+if [ "$(cat "$releases/v-book2/labels/scan.ocr.pdf" 2>/dev/null)" = "繁體書.ocr.pdf" ]; then pass "result keeps the display label"; else fail "result keeps the display label"; fi
+if [ "$(cat "$releases/v-book2/labels/scan.ocr.log" 2>/dev/null)" = "繁體書.ocr.log" ]; then pass "log keeps the display label"; else fail "log keeps the display label"; fi
+if [ "$(head -1 "$releases/v-bad/assets/broken.ocr.log" 2>/dev/null)" = "failed" ] && [ ! -e "$releases/v-bad/assets/broken.ocr.pdf" ]; then pass "bad file gets a failed log and no result"; else fail "bad file gets a failed log and no result"; fi
+if [ ! -e "$releases/v-done/assets/old.ocr.pdf" ]; then pass "file with a log is skipped"; else fail "file with a log is skipped"; fi
+if [ "$(find "$releases/v-draft/assets" -type f | wc -l | tr -d ' ')" = 1 ]; then pass "draft release is skipped"; else fail "draft release is skipped"; fi
+if [ "$(find "$releases/v-result/assets" -type f | wc -l | tr -d ' ')" = 1 ]; then pass "an .ocr.pdf is never treated as an original"; else fail "an .ocr.pdf is never treated as an original"; fi
+if echo "$log" | grep -q -e "v-book" -e "v-bad" -e "default" -e "scan" -e "broken" -e "繁體" -e "test/storage"; then fail "log has no release or file names"; else pass "log has no release or file names"; fi
+
+uploads=$(grep -c "release upload" "$FAKE_GH_DIR/calls.log")
+run_release_service "$work/job-rel2" >/dev/null
+assert_status "second run exits 0" 0 $?
+if [ "$uploads" = "$(grep -c "release upload" "$FAKE_GH_DIR/calls.log")" ]; then pass "second run uploads nothing"; else fail "second run uploads nothing"; fi
+unset FAKE_GH_DIR
+
 echo
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
