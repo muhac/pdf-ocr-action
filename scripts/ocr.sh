@@ -44,7 +44,10 @@ ocrmypdf=(uvx --quiet --python 3.13
 
 # Fail here, before touching any file, so a broken setup is never mistaken for bad PDFs.
 command -v tesseract >/dev/null || die "tesseract is required by OCRmyPDF (brew install tesseract)"
-"${ocrmypdf[@]}" --version >/dev/null 2>&1 || die "could not install or start OCRmyPDF"
+if ! preflight=$("${ocrmypdf[@]}" --version 2>&1); then
+  echo "$preflight" >&2
+  die "could not install or start OCRmyPDF"
+fi
 
 ocr_file() { # <source> <destination>
   mkdir -p "$(dirname "$2")"
