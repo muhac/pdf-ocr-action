@@ -182,6 +182,35 @@ STORAGE_DONE="scans/to do" "$storage" fetch "$work/job5" 2>/dev/null
 assert_status "inbox and done being the same folder exits 2" 2 $?
 unset STORAGE_URL STORAGE_INBOX STORAGE_DONE STORAGE_FAILED
 
+echo "# only the working folders are downloaded"
+git init -q --bare -b main "$work/big.git"
+# What a hosting service allows; needed for a partial clone over file://.
+git -C "$work/big.git" config uploadpack.allowFilter true
+git -C "$work/big.git" config uploadpack.allowAnySHA1InWant true
+git clone -q "$work/big.git" "$work/big-seed" 2>/dev/null
+mkdir -p "$work/big-seed/inbox" "$work/big-seed/library/shelf"
+cp "$fixtures/english.pdf" "$work/big-seed/inbox/private-scan.pdf"
+cp "$fixtures/chinese.pdf" "$work/big-seed/library/shelf/private-archive.pdf"
+echo "notes" > "$work/big-seed/README.md"
+git -C "$work/big-seed" add -A
+git -C "$work/big-seed" -c user.name=test -c user.email=test@example.com commit -q -m "seed"
+git -C "$work/big-seed" push -q origin HEAD:main
+archive=$(git -C "$work/big-seed" rev-parse "HEAD:library/shelf/private-archive.pdf")
+
+export STORAGE_URL="file://$work/big.git"
+"$storage" fetch "$work/job-big" >/dev/null 2>&1
+assert_status "fetch over a partial clone exits 0" 0 $?
+if [ -f "$work/job-big/input/private-scan.pdf" ]; then pass "inbox is checked out"; else fail "inbox is checked out"; fi
+if [ ! -e "$work/job-big/repo/library" ]; then pass "other folders are not checked out"; else fail "other folders are not checked out"; fi
+if git -C "$work/job-big/repo" rev-list --objects --missing=print HEAD 2>/dev/null | grep -q "^?$archive"; then pass "other folders are not downloaded"; else fail "other folders are not downloaded"; fi
+OCR_QUIET=true "$ocr" "$work/job-big/input" "$work/job-big/output" >/dev/null 2>&1
+"$storage" save "$work/job-big" >/dev/null 2>&1
+assert_status "save from a partial clone exits 0" 0 $?
+git clone -q "$work/big.git" "$work/verify-big"
+assert_contains "result is pushed from a partial clone" "$work/verify-big/done/private-scan.pdf" "quickbrownfox"
+if [ "$(git -C "$work/verify-big" rev-parse "HEAD:library/shelf/private-archive.pdf" 2>/dev/null)" = "$archive" ] && [ -f "$work/verify-big/README.md" ]; then pass "files outside the working folders are untouched"; else fail "files outside the working folders are untouched"; fi
+unset STORAGE_URL
+
 echo "# large files through releases"
 git init -q --bare -b main "$work/rel.git"
 git clone -q "$work/rel.git" "$work/rel-seed" 2>/dev/null

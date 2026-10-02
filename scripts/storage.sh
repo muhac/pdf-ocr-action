@@ -112,8 +112,12 @@ fetch() { # <workdir>
     url="https://x-access-token:${STORAGE_TOKEN}@github.com/${STORAGE_REPO}.git"
   fi
   work=$(mkdir -p "$1" && cd "$1" && pwd) || die "Cannot create the work directory."
-  git clone -q --depth 1 "$url" "$work/repo" >/dev/null 2>&1 ||
+  # Only the three working folders are downloaded and checked out; the rest of
+  # the repository (a document library can be large) stays on the server.
+  git clone -q --depth 1 --filter=blob:none --sparse "$url" "$work/repo" >/dev/null 2>&1 ||
     die "Cannot access the storage repository. Check STORAGE_REPO and STORAGE_TOKEN."
+  git -C "$work/repo" sparse-checkout set "$inbox" "$done_dir" "$failed_dir" >/dev/null 2>&1 ||
+    die "Cannot check out the working folders of the storage repository."
   mkdir -p "$work/repo/$inbox"
   # A fixed name, so the configured folder never shows up in the public log.
   ln -s "$work/repo/$inbox" "$work/input"
