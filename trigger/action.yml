@@ -1,0 +1,32 @@
+name: Trigger PDF OCR
+description: Ask your copy of pdf-ocr-action to process the PDFs waiting in your documents repository
+author: muhac
+branding:
+  icon: play
+  color: blue
+
+inputs:
+  service:
+    description: owner/name of your copy of pdf-ocr-action
+    required: true
+  token:
+    description: "Token allowed to run workflows in the service repository (Actions: Read and write)"
+    required: true
+  language:
+    description: Language code such as eng or chi_sim (empty = the service's own default)
+    default: ""
+  mode:
+    description: "skip: leave pages that already have text alone. force: OCR every page"
+    default: skip
+
+runs:
+  using: composite
+  steps:
+    - name: Start the OCR service
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        OCR_SERVICE: ${{ inputs.service }}
+        OCR_LANGUAGE: ${{ inputs.language }}
+        OCR_MODE: ${{ inputs.mode }}
+      run: gh workflow run ocr.yml --repo "$OCR_SERVICE" -f language="$OCR_LANGUAGE" -f mode="$OCR_MODE"
