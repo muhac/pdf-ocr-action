@@ -74,7 +74,7 @@ you ── add PDF ──▶ private repository: inbox/
 | `STORAGE_DONE` | Optional. Folder the searchable results are put in (default `done`) |
 | `STORAGE_FAILED` | Optional. Folder for PDFs that cannot be processed (default `failed`) |
 
-Folders may be nested, for example `scans/todo`. To change the language from the default `eng`, add a repository *variable* `OCR_LANGUAGE`, for example `chi_sim`.
+Folders may be nested, for example `scans/todo`. The service downloads only these three folders, so the rest of the documents repository can hold anything else, such as an organized library, without slowing it down. To change the language from the default `eng`, add a repository *variable* `OCR_LANGUAGE`, for example `chi_sim`.
 
 #### Use
 
@@ -225,7 +225,7 @@ PDF 存在只有你能看到的私有仓库里，你自己的这份 pdf-ocr-acti
 | `STORAGE_DONE` | 可选。识别结果放到哪个文件夹（默认 `done`） |
 | `STORAGE_FAILED` | 可选。处理不了的 PDF 放到哪个文件夹（默认 `failed`） |
 
-文件夹可以是多级路径，例如 `scans/todo`。默认语言是 `eng`，要改的话添加一个仓库 *variable* `OCR_LANGUAGE`，例如 `chi_sim`。
+文件夹可以是多级路径，例如 `scans/todo`。服务只下载这三个文件夹，文档仓库里的其他内容（比如整理好的资料库）不会被下载，也不会拖慢它。默认语言是 `eng`，要改的话添加一个仓库 *variable* `OCR_LANGUAGE`，例如 `chi_sim`。
 
 #### 使用
 
