@@ -5,6 +5,7 @@ set -uo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 ocr="$root/scripts/ocr.sh"
+storage="$root/scripts/storage.sh"
 fixtures="$root/tests/fixtures"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -77,6 +78,49 @@ OCR_MODE=bogus "$ocr" "$fixtures/english.pdf" "$work/bogus.pdf" 2>/dev/null
 assert_status "unknown mode exits 2" 2 $?
 "$ocr" "$work/does-not-exist.pdf" "$work/none.pdf" 2>/dev/null
 assert_status "missing input exits 2" 2 $?
+
+echo "# storage round trip"
+git init -q --bare -b main "$work/remote.git"
+git clone -q "$work/remote.git" "$work/seed" 2>/dev/null
+mkdir -p "$work/seed/inbox"
+touch "$work/seed/inbox/.gitkeep"
+cp "$fixtures/english.pdf" "$work/seed/inbox/private-scan.pdf"
+echo "not a pdf" > "$work/seed/inbox/private-broken.pdf"
+git -C "$work/seed" add -A
+git -C "$work/seed" -c user.name=test -c user.email=test@example.com commit -q -m "seed"
+git -C "$work/seed" push -q origin HEAD:main
+
+(unset STORAGE_REPO STORAGE_TOKEN STORAGE_URL; "$storage" fetch "$work/unconfigured" 2>/dev/null)
+assert_status "fetch without configuration exits 2" 2 $?
+
+export STORAGE_URL="$work/remote.git"
+log=$("$storage" fetch "$work/storage" 2>&1)
+assert_status "fetch exits 0" 0 $?
+
+log="$log$("$storage" save "$work/storage" "$work/no-results" 2>&1)"
+assert_status "save without results exits 0" 0 $?
+if [ -f "$work/storage/inbox/private-scan.pdf" ]; then pass "inbox is untouched when OCR did not run"; else fail "inbox is untouched when OCR did not run"; fi
+
+log="$log$(OCR_QUIET=true "$ocr" "$work/storage/inbox" "$work/results" 2>&1)"
+log="$log$("$storage" save "$work/storage" "$work/results" 2>&1)"
+assert_status "save exits 0" 0 $?
+
+git clone -q "$work/remote.git" "$work/verify"
+assert_contains "result is pushed to done/" "$work/verify/done/private-scan.pdf" "quickbrownfox"
+if [ -f "$work/verify/failed/private-broken.pdf" ]; then pass "bad file is moved to failed/"; else fail "bad file is moved to failed/"; fi
+if [ -z "$(ls "$work/verify/inbox")" ] && [ -f "$work/verify/inbox/.gitkeep" ]; then pass "inbox is emptied but kept"; else fail "inbox is emptied but kept"; fi
+if git -C "$work/verify" log -1 --format=%s | grep -q -F "[skip ci]"; then pass "commit skips CI"; else fail "commit skips CI"; fi
+if echo "$log" | grep -q -e "private-" -e "remote.git"; then fail "service log has no file or repository names"; else pass "service log has no file or repository names"; fi
+
+before=$(git -C "$work/verify" rev-parse HEAD)
+rm -rf "$work/storage" "$work/results"
+"$storage" fetch "$work/storage" >/dev/null 2>&1
+OCR_QUIET=true "$ocr" "$work/storage/inbox" "$work/results" >/dev/null 2>&1
+"$storage" save "$work/storage" "$work/results" >/dev/null 2>&1
+assert_status "save with an empty inbox exits 0" 0 $?
+git -C "$work/verify" pull -q
+if [ "$before" = "$(git -C "$work/verify" rev-parse HEAD)" ]; then pass "empty inbox creates no commit"; else fail "empty inbox creates no commit"; fi
+unset STORAGE_URL
 
 echo
 echo "$passed passed, $failed failed"

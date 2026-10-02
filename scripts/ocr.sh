@@ -39,11 +39,16 @@ extra=()
 # shellcheck disable=SC2206
 [ -n "${OCR_ARGS:-}" ] && extra=($OCR_ARGS)
 
+ocrmypdf=(uvx --quiet --python 3.13
+  --from "ocrmypdf==$OCRMYPDF_VERSION" --with "ocrmypdf-appleocr==$APPLEOCR_VERSION" ocrmypdf)
+
+# Fail here, before touching any file, so a broken setup is never mistaken for bad PDFs.
+command -v tesseract >/dev/null || die "tesseract is required by OCRmyPDF (brew install tesseract)"
+"${ocrmypdf[@]}" --version >/dev/null 2>&1 || die "could not install or start OCRmyPDF"
+
 ocr_file() { # <source> <destination>
   mkdir -p "$(dirname "$2")"
-  local cmd=(uvx --quiet --python 3.13
-    --from "ocrmypdf==$OCRMYPDF_VERSION" --with "ocrmypdf-appleocr==$APPLEOCR_VERSION"
-    ocrmypdf --ocr-engine appleocr --appleocr-recognition-mode "$recognition"
+  local cmd=("${ocrmypdf[@]}" --ocr-engine appleocr --appleocr-recognition-mode "$recognition"
     -l "$language" --mode "$mode")
   # ${extra[@]+...} keeps bash 3.2 (macOS default) from failing on an empty array under set -u.
   if [ "$quiet" = true ]; then
@@ -68,6 +73,7 @@ if [ "$total" -eq 0 ]; then
   exit 0
 fi
 
+mkdir -p "$output"
 failed=0
 index=0
 for file in "${files[@]}"; do
