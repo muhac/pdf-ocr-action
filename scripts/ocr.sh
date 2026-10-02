@@ -13,9 +13,11 @@
 #   OCR_ARGS         extra arguments passed to ocrmypdf
 set -uo pipefail
 
-# Pinned so an upstream release cannot silently break OCR.
+# Pinned so an upstream release cannot silently break OCR. The date freezes the
+# packages those two depend on; move it forward when bumping the versions.
 OCRMYPDF_VERSION=17.13.0
 APPLEOCR_VERSION=0.4.0
+PACKAGES_AS_OF=2026-10-02T00:00:00Z
 
 die() { echo "error: $1" >&2; exit 2; }
 
@@ -39,7 +41,7 @@ extra=()
 # shellcheck disable=SC2206
 [ -n "${OCR_ARGS:-}" ] && extra=($OCR_ARGS)
 
-ocrmypdf=(uvx --quiet --python 3.13
+ocrmypdf=(uvx --quiet --python 3.13 --exclude-newer "$PACKAGES_AS_OF"
   --from "ocrmypdf==$OCRMYPDF_VERSION" --with "ocrmypdf-appleocr==$APPLEOCR_VERSION" ocrmypdf)
 
 # Fail here, before touching any file, so a broken setup is never mistaken for bad PDFs.
