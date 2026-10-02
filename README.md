@@ -114,7 +114,7 @@ jobs:
 
 ### Limits
 
-- macOS runners only (Apple's OCR is not available elsewhere).
+- macOS runners only (Apple's OCR is not available elsewhere). Tested on `macos-15` and `macos-26`; `macos-14` is not supported.
 - One language per run.
 - The service reads PDFs directly inside the inbox folder, not in its subfolders, and GitHub rejects files larger than 100 MB.
 
@@ -245,7 +245,7 @@ jobs:
 
 ### 限制
 
-- 只能在 macOS runner 上运行（Apple 的文字识别在其他系统上不可用）。
+- 只能在 macOS runner 上运行（Apple 的文字识别在其他系统上不可用）。已在 `macos-15` 和 `macos-26` 上测试通过；不支持 `macos-14`。
 - 每次只能指定一种语言。
 - 服务只读取收件文件夹下的 PDF，不读它的子文件夹；GitHub 不接受超过 100 MB 的文件。
 
