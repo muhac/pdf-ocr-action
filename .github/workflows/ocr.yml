@@ -1,8 +1,10 @@
 name: OCR
 
 # The OCR service: takes PDFs from a folder in a private storage repository and
-# puts the searchable results in another. Configure it with the STORAGE_REPO and
-# STORAGE_TOKEN secrets (see README). Logs never contain file or folder names.
+# puts the searchable results in another; PDFs too large for git are taken from
+# the repository's releases. Configure it with the STORAGE_REPO and
+# STORAGE_TOKEN secrets (see README). Logs never contain file, folder or
+# release names.
 
 on:
   workflow_dispatch:
@@ -23,6 +25,9 @@ permissions:
 concurrency:
   group: ocr
   cancel-in-progress: false
+
+env:
+  OCR_LANGUAGE: ${{ inputs.language || vars.OCR_LANGUAGE || 'eng' }}
 
 jobs:
   ocr:
@@ -46,13 +51,24 @@ jobs:
         with:
           input: ${{ runner.temp }}/ocr/input
           output: ${{ runner.temp }}/ocr/output
-          language: ${{ inputs.language || vars.OCR_LANGUAGE || 'eng' }}
+          language: ${{ env.OCR_LANGUAGE }}
           mode: ${{ inputs.mode }}
           quiet: true
+
+      - name: OCR release files
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        env:
+          OCR_MODE: ${{ inputs.mode }}
+          OCR_QUIET: "true"
+        run: |
+          [ -d "$RUNNER_TEMP/ocr/release-input" ] || exit 0
+          scripts/ocr.sh "$RUNNER_TEMP/ocr/release-input" "$RUNNER_TEMP/ocr/release-output"
 
       - name: Save results
         if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
         env:
+          STORAGE_REPO: ${{ secrets.STORAGE_REPO }}
+          STORAGE_TOKEN: ${{ secrets.STORAGE_TOKEN }}
           STORAGE_INBOX: ${{ secrets.STORAGE_INBOX }}
           STORAGE_DONE: ${{ secrets.STORAGE_DONE }}
           STORAGE_FAILED: ${{ secrets.STORAGE_FAILED }}
