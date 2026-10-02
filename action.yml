@@ -1,0 +1,66 @@
+name: PDF OCR
+description: Turn scanned PDFs into searchable PDFs with Apple's on-device OCR (macOS runners only)
+author: muhac
+branding:
+  icon: file-text
+  color: blue
+
+inputs:
+  input:
+    description: A PDF file, or a directory containing PDF files
+    required: true
+  output:
+    description: Output file when input is a file, output directory when input is a directory
+    required: true
+  language:
+    description: One language code, for example eng, chi_sim, chi_tra, jpn, kor, fra, deu
+    default: eng
+  mode:
+    description: "skip: leave pages that already have text alone. force: OCR every page"
+    default: skip
+  recognition:
+    description: "Recognition mode: livetext, accurate or fast"
+    default: livetext
+  quiet:
+    description: "true: keep file names and OCR output out of the log"
+    default: "false"
+  args:
+    description: Extra arguments passed to ocrmypdf
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Check runner
+      if: runner.os != 'macOS'
+      shell: bash
+      run: |
+        echo "::error::pdf-ocr-action needs a macOS runner, for example runs-on: macos-15"
+        exit 1
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v10.2.0
+      with:
+        enable-cache: false
+
+    - name: Install dependencies
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+        HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        HOMEBREW_NO_ENV_HINTS: "1"
+      # OCRmyPDF refuses to start without tesseract even when another OCR engine is used;
+      # jbig2enc and pngquant only make the output smaller.
+      run: brew install --quiet tesseract jbig2enc pngquant
+
+    - name: Run OCR
+      shell: bash
+      env:
+        OCR_INPUT: ${{ inputs.input }}
+        OCR_OUTPUT: ${{ inputs.output }}
+        OCR_LANGUAGE: ${{ inputs.language }}
+        OCR_MODE: ${{ inputs.mode }}
+        OCR_RECOGNITION: ${{ inputs.recognition }}
+        OCR_QUIET: ${{ inputs.quiet }}
+        OCR_ARGS: ${{ inputs.args }}
+      run: '"$GITHUB_ACTION_PATH/scripts/ocr.sh" "$OCR_INPUT" "$OCR_OUTPUT"'
