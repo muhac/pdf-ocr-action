@@ -48,6 +48,20 @@ assert_status "directory exits 0" 0 $?
 assert_contains "chinese text is recognized" "$work/out/chinese.pdf" "扫描版文档可以变成可搜索的文档"
 assert_contains "english inside chinese page is recognized" "$work/out/chinese.pdf" "Englishwords"
 
+echo "# language subfolders"
+mkdir -p "$work/langs/chi_sim" "$work/langs/chi_tra" "$work/langs/notes"
+cp "$fixtures/english.pdf" "$work/langs/english.pdf"
+cp "$fixtures/chinese.pdf" "$work/langs/chi_sim/simplified.pdf"
+cp "$fixtures/traditional.pdf" "$work/langs/chi_tra/traditional.pdf"
+cp "$fixtures/english.pdf" "$work/langs/notes/ignored.pdf"
+# accurate mode cannot read Chinese as English, so these only pass if the folder's language is used.
+OCR_RECOGNITION=accurate "$ocr" "$work/langs" "$work/langs-out"
+assert_status "folder with language subfolders exits 0" 0 $?
+assert_contains "top-level file uses the default language" "$work/langs-out/english.pdf" "quickbrownfox"
+assert_contains "chi_sim folder is read as Simplified Chinese" "$work/langs-out/chi_sim/simplified.pdf" "扫描版文档可以变成可搜索的文档"
+assert_contains "chi_tra folder is read as Traditional Chinese" "$work/langs-out/chi_tra/traditional.pdf" "掃描版文件可以變成可搜尋的文件"
+if [ ! -e "$work/langs-out/notes" ]; then pass "other subfolders are ignored"; else fail "other subfolders are ignored"; fi
+
 echo "# pages that already have text"
 "$ocr" "$work/single/english.pdf" "$work/again/english.pdf"
 assert_status "skip mode accepts a PDF that already has text" 0 $?
@@ -123,6 +137,29 @@ OCR_QUIET=true "$ocr" "$work/job2/input" "$work/job2/output" >/dev/null 2>&1
 assert_status "save with an empty inbox exits 0" 0 $?
 git -C "$work/verify" pull -q
 if [ "$before" = "$(git -C "$work/verify" rev-parse HEAD)" ]; then pass "empty inbox creates no commit"; else fail "empty inbox creates no commit"; fi
+
+echo "# storage with language subfolders"
+seed_remote langs inbox
+mkdir -p "$work/langs-seed/inbox/chi_sim" "$work/langs-seed/inbox/chi_tra" "$work/langs-seed/inbox/notes"
+touch "$work/langs-seed/inbox/chi_sim/.gitkeep"
+cp "$fixtures/chinese.pdf" "$work/langs-seed/inbox/chi_sim/private-zh.pdf"
+echo "not a pdf" > "$work/langs-seed/inbox/chi_tra/private-bad.pdf"
+cp "$fixtures/english.pdf" "$work/langs-seed/inbox/notes/private-note.pdf"
+git -C "$work/langs-seed" add -A
+git -C "$work/langs-seed" -c user.name=test -c user.email=test@example.com commit -q -m "more"
+git -C "$work/langs-seed" push -q origin HEAD:main
+export STORAGE_URL="$work/langs.git"
+log=$("$storage" fetch "$work/job-langs" 2>&1)
+log="$log$(OCR_QUIET=true "$ocr" "$work/job-langs/input" "$work/job-langs/output" 2>&1)"
+log="$log$("$storage" save "$work/job-langs" 2>&1)"
+assert_status "save with language subfolders exits 0" 0 $?
+git clone -q "$work/langs.git" "$work/verify-langs"
+assert_contains "top-level result is still pushed to done/" "$work/verify-langs/done/private-scan.pdf" "quickbrownfox"
+assert_contains "language folder result keeps its folder" "$work/verify-langs/done/chi_sim/private-zh.pdf" "扫描版文档可以变成可搜索的文档"
+if [ -f "$work/verify-langs/failed/chi_tra/private-bad.pdf" ]; then pass "language folder failure keeps its folder"; else fail "language folder failure keeps its folder"; fi
+if [ -z "$(ls "$work/verify-langs/inbox/chi_sim")" ] && [ -f "$work/verify-langs/inbox/chi_sim/.gitkeep" ]; then pass "language folder is emptied but kept"; else fail "language folder is emptied but kept"; fi
+if [ -f "$work/verify-langs/inbox/notes/private-note.pdf" ]; then pass "other inbox subfolders are left alone"; else fail "other inbox subfolders are left alone"; fi
+if echo "$log" | grep -q -e "private-"; then fail "log has no file names with language subfolders"; else pass "log has no file names with language subfolders"; fi
 
 echo "# custom folders"
 seed_remote custom "scans/to do"

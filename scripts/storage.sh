@@ -6,6 +6,9 @@
 # Usage: storage.sh fetch <workdir>   clone the storage repository; its waiting PDFs appear in <workdir>/input
 #        storage.sh save <workdir>    file the results from <workdir>/output, set failures aside, push
 #
+# Language subfolders of the inbox (inbox/chi_sim/...) keep their place: results go
+# to done/chi_sim/, failures to failed/chi_sim/.
+#
 # Environment:
 #   STORAGE_REPO    owner/name of the private storage repository
 #   STORAGE_TOKEN   token with read and write access to its contents
@@ -56,26 +59,39 @@ fetch() { # <workdir>
   echo "Fetched the storage repository."
 }
 
+saved=0
+failed=0
+
+file_results() { # <subfolder, or empty for the inbox itself>
+  local sub=${1:+$1/} file name
+  for file in "$inbox/$sub"*.pdf; do
+    name=$(basename "$file")
+    if [ -f "$work/output/$sub$name" ]; then
+      mkdir -p "$done_dir/$sub"
+      mv -f "$work/output/$sub$name" "$done_dir/$sub$name"
+      rm -f "$file"
+      saved=$((saved + 1))
+    else
+      mkdir -p "$failed_dir/$sub"
+      mv -f "$file" "$failed_dir/$sub$name"
+      failed=$((failed + 1))
+    fi
+  done
+}
+
 save() { # <workdir>
-  local work saved=0 failed=0 file name
+  local dir
   work=$(cd "$1" 2>/dev/null && pwd) && [ -d "$work/repo" ] || die "Nothing was fetched."
   # No output directory means OCR never started (setup failure), not that every file failed.
   [ -d "$work/output" ] || { echo "OCR did not run; inbox left untouched."; return 0; }
   cd "$work/repo" || die "Nothing was fetched."
 
   shopt -s nullglob nocaseglob
-  for file in "$inbox"/*.pdf; do
-    name=$(basename "$file")
-    if [ -f "$work/output/$name" ]; then
-      mkdir -p "$done_dir"
-      mv -f "$work/output/$name" "$done_dir/$name"
-      rm -f "$file"
-      saved=$((saved + 1))
-    else
-      mkdir -p "$failed_dir"
-      mv -f "$file" "$failed_dir/$name"
-      failed=$((failed + 1))
-    fi
+  file_results ""
+  # OCR creates an output subfolder for each language subfolder it worked on, so
+  # other inbox subfolders are left alone.
+  for dir in "$work/output"/*/; do
+    file_results "$(basename "$dir")"
   done
   shopt -u nocaseglob
 

@@ -30,6 +30,14 @@ PAGES = {
             "本页包含 English words 和数字 20481。",
         ],
     ),
+    "traditional.pdf": (
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+        [
+            "繁體中文測試頁面",
+            "掃描版文件可以變成可搜尋的文件。",
+            "今天天氣很好，我們一起去公園散步。",
+        ],
+    ),
 }
 
 

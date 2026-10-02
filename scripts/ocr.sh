@@ -4,8 +4,12 @@
 # Usage: ocr.sh <input.pdf> <output.pdf>
 #        ocr.sh <input-dir> <output-dir>
 #
+# In a directory, PDFs inside a subfolder named after a language code (chi_sim/,
+# jpn/, ...) are read in that language; the output keeps the same subfolder.
+#
 # Options (environment variables):
-#   OCR_LANGUAGE     one language code, e.g. eng, chi_sim, jpn (default: eng)
+#   OCR_LANGUAGE     one language code, e.g. eng, chi_sim, jpn (default: eng);
+#                    in a directory, the language for PDFs outside language subfolders
 #   OCR_MODE         skip  = leave pages that already have text alone (default)
 #                    force = rasterize and OCR every page
 #   OCR_RECOGNITION  livetext | accurate | fast (default: livetext)
@@ -18,6 +22,9 @@ set -uo pipefail
 OCRMYPDF_VERSION=17.13.0
 APPLEOCR_VERSION=0.4.0
 PACKAGES_AS_OF=2026-10-02T00:00:00Z
+# Languages of the pinned plugin version; these are the recognized subfolder names.
+LANGUAGES="eng fra ita deu spa por chi_sim chi_tra yue_sim yue_tra kor jpn rus ukr tha vie
+  ara ars tur ind ces dan nld nor nno nob msa pol ron swe"
 
 die() { echo "error: $1" >&2; exit 2; }
 
@@ -51,10 +58,10 @@ if ! preflight=$("${ocrmypdf[@]}" --version 2>&1); then
   die "could not install or start OCRmyPDF"
 fi
 
-ocr_file() { # <source> <destination>
+ocr_file() { # <source> <destination> <language>
   mkdir -p "$(dirname "$2")"
   local cmd=("${ocrmypdf[@]}" --ocr-engine appleocr --appleocr-recognition-mode "$recognition"
-    -l "$language" --mode "$mode")
+    -l "$3" --mode "$mode")
   # ${extra[@]+...} keeps bash 3.2 (macOS default) from failing on an empty array under set -u.
   if [ "$quiet" = true ]; then
     "${cmd[@]}" --quiet ${extra[@]+"${extra[@]}"} "$1" "$2" >/dev/null 2>&1
@@ -64,12 +71,16 @@ ocr_file() { # <source> <destination>
 }
 
 if [ ! -d "$input" ]; then
-  ocr_file "$input" "$output"
+  ocr_file "$input" "$output" "$language"
   exit $?
 fi
 
+input=${input%/}
 shopt -s nullglob nocaseglob
 files=("$input"/*.pdf)
+for code in $LANGUAGES; do
+  [ -d "$input/$code" ] && files+=("$input/$code"/*.pdf)
+done
 shopt -u nocaseglob
 
 total=${#files[@]}
@@ -83,9 +94,14 @@ failed=0
 index=0
 for file in "${files[@]}"; do
   index=$((index + 1))
+  name=${file#"$input"/}
+  case "$name" in
+    */*) file_language=${name%%/*} ;;
+    *) file_language=$language ;;
+  esac
   label="[$index/$total]"
-  [ "$quiet" = true ] || label="$label $(basename "$file")"
-  if ocr_file "$file" "$output/$(basename "$file")"; then
+  [ "$quiet" = true ] || label="$label $name"
+  if ocr_file "$file" "$output/$name" "$file_language"; then
     echo "$label done"
   else
     echo "$label failed"
