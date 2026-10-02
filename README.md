@@ -95,7 +95,10 @@ To have the service start by itself whenever a PDF arrives, add this workflow to
 ```yaml
 on:
   push:
+    branches: [main]
     paths: ["inbox/**"]
+  release:
+    types: [published]
 
 jobs:
   trigger:
@@ -107,12 +110,25 @@ jobs:
           token: ${{ secrets.SERVICE_TOKEN }}
 ```
 
-`SERVICE_TOKEN` is a second fine-grained token, limited to the service repository with **Actions: Read and write**, saved as a secret in the documents repository. The trigger also accepts `language` and `mode`.
+`SERVICE_TOKEN` is a second fine-grained token, limited to the service repository with **Actions: Read and write**, saved as a secret in the documents repository. The trigger also accepts `language` and `mode`. The `release` part is only needed for large files, described next; `branches` keeps the tag of a new release from starting a second run.
+
+#### Files larger than 100 MB
+
+Git does not accept files over 100 MB. Send those through a release of the documents repository instead, which allows up to 2 GB per file:
+
+1. Create a release in the documents repository, attach the PDF and publish it.
+2. Run the service, unless it starts automatically.
+3. The service attaches two files to the same release: `book.ocr.pdf`, the searchable result, and `book.ocr.log`, whose first line is `done` or `failed`.
+
+- A PDF is processed when there is no `.ocr.log` next to it. Delete the log to have the PDF processed again; add one yourself to have a PDF left alone.
+- To choose the language, put its code alone on the first line of the release description, for example `chi_tra`.
+- GitHub drops non-Latin characters from attachment names (`测试.pdf` is stored as `default.pdf`), so put the real name in the release title.
+- Draft releases are ignored.
 
 ### Privacy
 
 - PDFs are stored only in your private repository. They are processed on a GitHub-hosted runner that is discarded after the job. No third-party OCR service is involved.
-- The service repository is public and so are its logs. The service only logs counts, such as `[1/3] done`, never file names, folder names or the name of your documents repository. That is why those settings are secrets.
+- The service repository is public and so are its logs. The service only logs counts, such as `[1/3] done`, never file names, folder names, release names or the name of your documents repository. That is why those settings are secrets.
 - Anyone who obtains `STORAGE_TOKEN` can read your documents. Limit it to the one repository and give it an expiry date.
 - GitHub Actions use is subject to [GitHub's terms](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features#actions). macOS runners are free for public repositories and billed by the minute for private ones. The service setup is meant for light personal use.
 
@@ -120,7 +136,7 @@ jobs:
 
 - macOS runners only (Apple's OCR is not available elsewhere). Tested on `macos-15` and `macos-26`; `macos-14` is not supported.
 - One language per PDF.
-- The service reads PDFs directly inside the inbox folder and its language subfolders, nothing deeper, and GitHub rejects files larger than 100 MB.
+- The service reads PDFs directly inside the inbox folder and its language subfolders, nothing deeper. Files larger than 100 MB have to go through a release.
 
 ### Run it locally
 
@@ -230,7 +246,10 @@ gh workflow run ocr.yml --repo 你的用户名/pdf-ocr-action
 ```yaml
 on:
   push:
+    branches: [main]
     paths: ["inbox/**"]
+  release:
+    types: [published]
 
 jobs:
   trigger:
@@ -242,12 +261,25 @@ jobs:
           token: ${{ secrets.SERVICE_TOKEN }}
 ```
 
-`SERVICE_TOKEN` 是第二个 fine-grained token，只授权服务仓库，权限选 **Actions: Read and write**，作为 secret 保存在文档仓库里。trigger 还接受 `language` 和 `mode` 两个参数。
+`SERVICE_TOKEN` 是第二个 fine-grained token，只授权服务仓库，权限选 **Actions: Read and write**，作为 secret 保存在文档仓库里。trigger 还接受 `language` 和 `mode` 两个参数。`release` 那部分只在处理大文件时需要，见下一节；`branches` 是为了避免新 Release 的标签再触发一次运行。
+
+#### 超过 100 MB 的文件
+
+Git 不接受超过 100 MB 的文件。这类文件改用文档仓库的 Release 传递，单个文件最大 2 GB：
+
+1. 在文档仓库新建一个 Release，把 PDF 作为附件上传并发布。
+2. 运行服务；配置了自动触发的话不用手动运行。
+3. 服务会往同一个 Release 里添加两个文件：`book.ocr.pdf` 是可搜索的结果，`book.ocr.log` 的第一行是 `done` 或 `failed`。
+
+- 一个 PDF 旁边没有对应的 `.ocr.log` 时才会被处理。删掉日志就会重新处理；自己放一个日志进去，这个 PDF 就不会被处理。
+- 要指定语言，把语言代码单独写在 Release 说明的第一行，例如 `chi_tra`。
+- GitHub 会去掉附件文件名里的非拉丁字符（`测试.pdf` 会被存成 `default.pdf`），所以真正的名字请写在 Release 的标题里。
+- 草稿状态的 Release 不会被处理。
 
 ### 隐私
 
 - PDF 只存放在你的私有仓库。处理在 GitHub 托管的 runner 上进行，任务结束后 runner 即销毁。不经过任何第三方 OCR 服务。
-- 服务仓库是公开的，它的日志也是公开的。服务只记录数量（如 `[1/3] done`），不记录文件名、文件夹名，也不记录文档仓库的名字。这些配置之所以放在 secret 里，就是这个原因。
+- 服务仓库是公开的，它的日志也是公开的。服务只记录数量（如 `[1/3] done`），不记录文件名、文件夹名、Release 名，也不记录文档仓库的名字。这些配置之所以放在 secret 里，就是这个原因。
 - 拿到 `STORAGE_TOKEN` 的人可以读取你的文档。请只授权那一个仓库，并设置过期时间。
 - 使用 GitHub Actions 须遵守 [GitHub 的条款](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features#actions)。macOS runner 对公开仓库免费，对私有仓库按分钟计费。服务这种用法适合个人少量使用。
 
@@ -255,7 +287,7 @@ jobs:
 
 - 只能在 macOS runner 上运行（Apple 的文字识别在其他系统上不可用）。已在 `macos-15` 和 `macos-26` 上测试通过；不支持 `macos-14`。
 - 每份 PDF 只能按一种语言识别。
-- 服务只读取收件文件夹及其语言子文件夹里的 PDF，不读更深的层级；GitHub 不接受超过 100 MB 的文件。
+- 服务只读取收件文件夹及其语言子文件夹里的 PDF，不读更深的层级。超过 100 MB 的文件需要通过 Release 传递。
 
 ### 本地运行
 
