@@ -7,13 +7,13 @@ branding:
 
 inputs:
   input:
-    description: A PDF file, or a directory containing PDF files
+    description: A PDF file, or a directory of PDF files (subfolders named after a language code are read in that language)
     required: true
   output:
     description: Output file when input is a file, output directory when input is a directory
     required: true
   language:
-    description: One language code, for example eng, chi_sim, chi_tra, jpn, kor, fra, deu
+    description: One language code, for example eng, chi_sim, chi_tra, jpn, kor, fra, deu (in a directory, the language outside language subfolders)
     default: eng
   mode:
     description: "skip: leave pages that already have text alone. force: OCR every page"

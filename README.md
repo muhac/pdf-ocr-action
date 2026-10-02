@@ -42,7 +42,9 @@ jobs:
 
 When `input` is a folder, a file that cannot be processed does not stop the others; the step fails at the end and the good results are still written.
 
-**Languages.** Common codes: `eng`, `chi_sim`, `chi_tra`, `jpn`, `kor`, `fra`, `deu`, `spa`, `ita`, `por`, `rus`. The [full list](https://github.com/mkyt/OCRmyPDF-AppleOCR#supported-languages) has about 30. Only one language can be given per run, but Latin text inside a Chinese, Japanese or Korean page is still recognized.
+**Languages.** Common codes: `eng`, `chi_sim`, `chi_tra`, `jpn`, `kor`, `fra`, `deu`, `spa`, `ita`, `por`, `rus`. The [full list](https://github.com/mkyt/OCRmyPDF-AppleOCR#supported-languages) has about 30. Each PDF is read in one language, but Latin text inside a Chinese, Japanese or Korean page is still recognized.
+
+**Several languages at once.** When `input` is a folder, PDFs in a subfolder named after a language code are read in that language, and the output keeps the subfolder: `scans/chi_tra/a.pdf` becomes `searchable/chi_tra/a.pdf`. PDFs directly in the folder use `language`. Other subfolders are ignored.
 
 ### Run it as your own OCR service
 
@@ -84,6 +86,8 @@ gh workflow run ocr.yml --repo your-name/pdf-ocr-action
 
 A few minutes later each PDF appears in the done folder under the same name and is removed from the inbox. Files that cannot be processed are moved to the failed folder.
 
+PDFs directly in the inbox are read in the default language. For another language, put them in a subfolder named after its code, such as `inbox/chi_sim/` or `inbox/chi_tra/`; the result appears in the same subfolder of the done folder.
+
 #### Start it automatically
 
 To have the service start by itself whenever a PDF arrives, add this workflow to the documents repository as `.github/workflows/ocr.yml`:
@@ -115,8 +119,8 @@ jobs:
 ### Limits
 
 - macOS runners only (Apple's OCR is not available elsewhere). Tested on `macos-15` and `macos-26`; `macos-14` is not supported.
-- One language per run.
-- The service reads PDFs directly inside the inbox folder, not in its subfolders, and GitHub rejects files larger than 100 MB.
+- One language per PDF.
+- The service reads PDFs directly inside the inbox folder and its language subfolders, nothing deeper, and GitHub rejects files larger than 100 MB.
 
 ### Run it locally
 
@@ -173,7 +177,9 @@ jobs:
 
 `input` 是文件夹时，某个文件处理失败不会影响其他文件；该步骤最后会报失败，但成功的结果照常输出。
 
-**语言。** 常用代码：`chi_sim`（简体中文）、`chi_tra`（繁体中文）、`eng`、`jpn`、`kor`、`fra`、`deu`、`spa`、`rus`。[完整列表](https://github.com/mkyt/OCRmyPDF-AppleOCR#supported-languages)约 30 种。每次只能指定一种语言，不过中日韩文页面里夹杂的英文和数字仍然能识别。
+**语言。** 常用代码：`chi_sim`（简体中文）、`chi_tra`（繁体中文）、`eng`、`jpn`、`kor`、`fra`、`deu`、`spa`、`rus`。[完整列表](https://github.com/mkyt/OCRmyPDF-AppleOCR#supported-languages)约 30 种。每份 PDF 按一种语言识别，不过中日韩文页面里夹杂的英文和数字仍然能识别。
+
+**同时处理多种语言。** `input` 是文件夹时，放在以语言代码命名的子文件夹里的 PDF 会按该语言识别，输出保持同样的子文件夹：`scans/chi_tra/a.pdf` 对应 `searchable/chi_tra/a.pdf`。直接放在文件夹里的 PDF 使用 `language`。其他子文件夹会被忽略。
 
 ### 搭建自己的 OCR 服务
 
@@ -215,6 +221,8 @@ gh workflow run ocr.yml --repo 你的用户名/pdf-ocr-action
 
 几分钟后，同名文件会出现在结果文件夹里，收件文件夹里的原件被移除。处理不了的文件会被移到失败文件夹。
 
+直接放在收件文件夹里的 PDF 按默认语言识别。要用其他语言，就放进以语言代码命名的子文件夹，例如 `inbox/chi_sim/` 或 `inbox/chi_tra/`；结果会出现在结果文件夹的同名子文件夹里。
+
 #### 自动触发
 
 想让服务在 PDF 到达时自动开始，就在文档仓库里添加这个 workflow，保存为 `.github/workflows/ocr.yml`：
@@ -246,8 +254,8 @@ jobs:
 ### 限制
 
 - 只能在 macOS runner 上运行（Apple 的文字识别在其他系统上不可用）。已在 `macos-15` 和 `macos-26` 上测试通过；不支持 `macos-14`。
-- 每次只能指定一种语言。
-- 服务只读取收件文件夹下的 PDF，不读它的子文件夹；GitHub 不接受超过 100 MB 的文件。
+- 每份 PDF 只能按一种语言识别。
+- 服务只读取收件文件夹及其语言子文件夹里的 PDF，不读更深的层级；GitHub 不接受超过 100 MB 的文件。
 
 ### 本地运行
 
