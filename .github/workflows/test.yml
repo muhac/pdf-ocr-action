@@ -1,0 +1,36 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / ${{ matrix.recognition }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+        recognition: [livetext, accurate]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run the action
+        uses: ./
+        with:
+          input: tests/fixtures
+          output: ${{ runner.temp }}/out
+          language: chi_sim
+          recognition: ${{ matrix.recognition }}
+
+      - name: Run the test suite
+        env:
+          OCR_RECOGNITION: ${{ matrix.recognition }}
+        run: tests/run.sh

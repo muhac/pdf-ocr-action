@@ -1,0 +1,28 @@
+name: Request OCR
+
+# Lives in your private documents repository. Whenever a PDF lands in inbox/,
+# it asks your copy of pdf-ocr-action to process it.
+#
+# Settings → Secrets and variables → Actions:
+#   secret   SERVICE_TOKEN  token allowed to run workflows in the service repository
+#   variable SERVICE_REPO   owner/name of your copy of pdf-ocr-action
+#   variable OCR_LANGUAGE   optional language code, for example chi_sim
+
+on:
+  push:
+    paths: ["inbox/**"]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Start the OCR service
+        env:
+          GH_TOKEN: ${{ secrets.SERVICE_TOKEN }}
+          SERVICE_REPO: ${{ vars.SERVICE_REPO }}
+          OCR_LANGUAGE: ${{ vars.OCR_LANGUAGE }}
+        run: gh workflow run ocr.yml --repo "$SERVICE_REPO" -f language="$OCR_LANGUAGE"

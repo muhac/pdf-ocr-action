@@ -1,0 +1,52 @@
+name: OCR
+
+# The OCR service: takes PDFs from inbox/ in a private storage repository and
+# puts the searchable results in done/. Configure it with the STORAGE_REPO and
+# STORAGE_TOKEN secrets (see README). Logs never contain file names.
+
+on:
+  workflow_dispatch:
+    inputs:
+      language:
+        description: Language code such as eng or chi_sim (empty = OCR_LANGUAGE variable, then eng)
+        required: false
+        type: string
+      mode:
+        description: "skip: leave pages that already have text alone. force: OCR every page"
+        type: choice
+        options: [skip, force]
+        default: skip
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ocr
+  cancel-in-progress: false
+
+jobs:
+  ocr:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Fetch documents
+        id: fetch
+        env:
+          STORAGE_REPO: ${{ secrets.STORAGE_REPO }}
+          STORAGE_TOKEN: ${{ secrets.STORAGE_TOKEN }}
+        run: scripts/storage.sh fetch "$RUNNER_TEMP/storage"
+
+      - name: OCR
+        uses: ./
+        with:
+          input: ${{ runner.temp }}/storage/inbox
+          output: ${{ runner.temp }}/results
+          language: ${{ inputs.language || vars.OCR_LANGUAGE || 'eng' }}
+          mode: ${{ inputs.mode }}
+          quiet: true
+
+      - name: Save results
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: scripts/storage.sh save "$RUNNER_TEMP/storage" "$RUNNER_TEMP/results"
