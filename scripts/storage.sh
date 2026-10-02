@@ -37,7 +37,7 @@ save() { # <dir> <results>
   for file in inbox/*.pdf; do
     name=$(basename "$file")
     if [ -f "$results/$name" ]; then
-      mkdir -p done
+      mkdir -p "done"
       mv -f "$results/$name" "done/$name"
       rm -f "$file"
       saved=$((saved + 1))
@@ -61,8 +61,7 @@ save() { # <dir> <results>
     commit -q -m "chore(ocr): process $((saved + failed)) file(s) [skip ci]" >/dev/null 2>&1 ||
     die "Could not commit the results."
 
-  local attempt
-  for attempt in 1 2 3; do
+  for _ in 1 2 3; do
     if git push -q origin HEAD >/dev/null 2>&1; then
       echo "Saved $saved result(s), $failed failed."
       return 0
