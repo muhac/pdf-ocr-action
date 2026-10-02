@@ -50,7 +50,7 @@ Your PDFs live in a private repository that only you can see. Your copy of this 
 
 ```
 you ── add PDF ──▶ private repository: inbox/
-                        │ asks the service to run
+                        │
                         ▼
                  your copy of pdf-ocr-action (macOS runner)
                         │
@@ -58,26 +58,57 @@ you ── add PDF ──▶ private repository: inbox/
                    private repository: done/   (failed/ if a file cannot be processed)
 ```
 
-Setup, about ten minutes:
+#### Set up
 
 1. **Service repository.** Fork this repository, then open the fork's **Actions** tab and enable workflows.
-2. **Documents repository.** Create a new *private* repository and copy the contents of [`template/`](template) into it (`.github/workflows/request-ocr.yml` and `inbox/.gitkeep`).
-3. **Let the service reach your documents.** Create a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) limited to the documents repository with **Contents: Read and write**. In the service repository, under *Settings → Secrets and variables → Actions*, add two secrets:
-   - `STORAGE_TOKEN`: the token
-   - `STORAGE_REPO`: `your-name/your-documents`
-4. **Let your documents call the service.** Create a second fine-grained token limited to the service repository with **Actions: Read and write**. In the documents repository add:
-   - secret `SERVICE_TOKEN`: the token
-   - variable `SERVICE_REPO`: `your-name/pdf-ocr-action`
-   - variable `OCR_LANGUAGE` (optional): for example `chi_sim`
+2. **Documents repository.** Pick any private repository of yours, new or existing. Nothing has to be installed in it.
+3. **Connect them.** Create a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) limited to the documents repository with **Contents: Read and write**. In the service repository, under *Settings → Secrets and variables → Actions*, add these secrets:
 
-Then add a PDF to `inbox/`, by `git push` or by uploading on github.com. A few minutes later it appears in `done/` under the same name and is removed from `inbox/`. Files that cannot be processed are moved to `failed/`.
+| Secret | Value |
+| --- | --- |
+| `STORAGE_TOKEN` | The token |
+| `STORAGE_REPO` | `your-name/your-documents` |
+| `STORAGE_INBOX` | Optional. Folder PDFs are taken from (default `inbox`) |
+| `STORAGE_DONE` | Optional. Folder the searchable results are put in (default `done`) |
+| `STORAGE_FAILED` | Optional. Folder for PDFs that cannot be processed (default `failed`) |
 
-Step 4 is optional: without it, start the **OCR** workflow by hand from the service repository's Actions tab.
+Folders may be nested, for example `scans/todo`. To change the language from the default `eng`, add a repository *variable* `OCR_LANGUAGE`, for example `chi_sim`.
+
+#### Use
+
+Add PDFs to the inbox folder, by `git push` or by uploading on github.com. Then start the **OCR** workflow from the service repository's Actions tab, or from a terminal:
+
+```sh
+gh workflow run ocr.yml --repo your-name/pdf-ocr-action
+```
+
+A few minutes later each PDF appears in the done folder under the same name and is removed from the inbox. Files that cannot be processed are moved to the failed folder.
+
+#### Start it automatically
+
+To have the service start by itself whenever a PDF arrives, add this workflow to the documents repository as `.github/workflows/ocr.yml`:
+
+```yaml
+on:
+  push:
+    paths: ["inbox/**"]
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: muhac/pdf-ocr-action/trigger@v1
+        with:
+          service: your-name/pdf-ocr-action
+          token: ${{ secrets.SERVICE_TOKEN }}
+```
+
+`SERVICE_TOKEN` is a second fine-grained token, limited to the service repository with **Actions: Read and write**, saved as a secret in the documents repository. The trigger also accepts `language` and `mode`.
 
 ### Privacy
 
 - PDFs are stored only in your private repository. They are processed on a GitHub-hosted runner that is discarded after the job. No third-party OCR service is involved.
-- The service repository is public and so are its logs. The service only logs counts, such as `[1/3] done`, never file names or the name of your documents repository. Keep both in secrets as described above.
+- The service repository is public and so are its logs. The service only logs counts, such as `[1/3] done`, never file names, folder names or the name of your documents repository. That is why those settings are secrets.
 - Anyone who obtains `STORAGE_TOKEN` can read your documents. Limit it to the one repository and give it an expiry date.
 - GitHub Actions use is subject to [GitHub's terms](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features#actions). macOS runners are free for public repositories and billed by the minute for private ones. The service setup is meant for light personal use.
 
@@ -85,7 +116,7 @@ Step 4 is optional: without it, start the **OCR** workflow by hand from the serv
 
 - macOS runners only (Apple's OCR is not available elsewhere).
 - One language per run.
-- The service reads PDFs directly inside `inbox/`, not in subfolders, and GitHub rejects files larger than 100 MB.
+- The service reads PDFs directly inside the inbox folder, not in its subfolders, and GitHub rejects files larger than 100 MB.
 
 ### Run it locally
 
@@ -150,7 +181,7 @@ PDF 存在只有你能看到的私有仓库里，你自己的这份 pdf-ocr-acti
 
 ```
 你 ── 放入 PDF ──▶ 私有仓库：inbox/
-                       │ 通知服务开始处理
+                       │
                        ▼
                 你自己的 pdf-ocr-action（macOS runner）
                        │
@@ -158,26 +189,57 @@ PDF 存在只有你能看到的私有仓库里，你自己的这份 pdf-ocr-acti
                   私有仓库：done/   （处理不了的文件进 failed/）
 ```
 
-配置大约十分钟：
+#### 配置
 
 1. **服务仓库。** Fork 本仓库，然后在 fork 的 **Actions** 页启用 workflow。
-2. **文档仓库。** 新建一个**私有**仓库，把 [`template/`](template) 里的内容复制进去（`.github/workflows/request-ocr.yml` 和 `inbox/.gitkeep`）。
-3. **让服务能访问你的文档。** 创建一个 [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new)，只授权文档仓库，权限选 **Contents: Read and write**。在服务仓库的 *Settings → Secrets and variables → Actions* 里添加两个 secret：
-   - `STORAGE_TOKEN`：这个 token
-   - `STORAGE_REPO`：`你的用户名/你的文档仓库`
-4. **让文档仓库能调用服务。** 再创建一个 fine-grained token，只授权服务仓库，权限选 **Actions: Read and write**。在文档仓库里添加：
-   - secret `SERVICE_TOKEN`：这个 token
-   - variable `SERVICE_REPO`：`你的用户名/pdf-ocr-action`
-   - variable `OCR_LANGUAGE`（可选）：例如 `chi_sim`
+2. **文档仓库。** 任选一个你自己的私有仓库，新建或现有的都行，里面不需要安装任何东西。
+3. **把两者连起来。** 创建一个 [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new)，只授权文档仓库，权限选 **Contents: Read and write**。在服务仓库的 *Settings → Secrets and variables → Actions* 里添加以下 secret：
 
-之后把 PDF 放进 `inbox/` 即可，用 `git push` 或在 github.com 网页上传都行。几分钟后，同名文件会出现在 `done/`，`inbox/` 里的原件被移除。处理不了的文件会被移到 `failed/`。
+| Secret | 值 |
+| --- | --- |
+| `STORAGE_TOKEN` | 上面创建的 token |
+| `STORAGE_REPO` | `你的用户名/你的文档仓库` |
+| `STORAGE_INBOX` | 可选。从哪个文件夹取 PDF（默认 `inbox`） |
+| `STORAGE_DONE` | 可选。识别结果放到哪个文件夹（默认 `done`） |
+| `STORAGE_FAILED` | 可选。处理不了的 PDF 放到哪个文件夹（默认 `failed`） |
 
-第 4 步可以不做：这样就需要到服务仓库的 Actions 页手动运行 **OCR** workflow。
+文件夹可以是多级路径，例如 `scans/todo`。默认语言是 `eng`，要改的话添加一个仓库 *variable* `OCR_LANGUAGE`，例如 `chi_sim`。
+
+#### 使用
+
+把 PDF 放进收件文件夹，用 `git push` 或在 github.com 网页上传都行。然后到服务仓库的 Actions 页运行 **OCR** workflow，或者在终端执行：
+
+```sh
+gh workflow run ocr.yml --repo 你的用户名/pdf-ocr-action
+```
+
+几分钟后，同名文件会出现在结果文件夹里，收件文件夹里的原件被移除。处理不了的文件会被移到失败文件夹。
+
+#### 自动触发
+
+想让服务在 PDF 到达时自动开始，就在文档仓库里添加这个 workflow，保存为 `.github/workflows/ocr.yml`：
+
+```yaml
+on:
+  push:
+    paths: ["inbox/**"]
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: muhac/pdf-ocr-action/trigger@v1
+        with:
+          service: 你的用户名/pdf-ocr-action
+          token: ${{ secrets.SERVICE_TOKEN }}
+```
+
+`SERVICE_TOKEN` 是第二个 fine-grained token，只授权服务仓库，权限选 **Actions: Read and write**，作为 secret 保存在文档仓库里。trigger 还接受 `language` 和 `mode` 两个参数。
 
 ### 隐私
 
 - PDF 只存放在你的私有仓库。处理在 GitHub 托管的 runner 上进行，任务结束后 runner 即销毁。不经过任何第三方 OCR 服务。
-- 服务仓库是公开的，它的日志也是公开的。服务只记录数量（如 `[1/3] done`），不记录文件名，也不记录文档仓库的名字。请按上面的说明把这两项放在 secret 里。
+- 服务仓库是公开的，它的日志也是公开的。服务只记录数量（如 `[1/3] done`），不记录文件名、文件夹名，也不记录文档仓库的名字。这些配置之所以放在 secret 里，就是这个原因。
 - 拿到 `STORAGE_TOKEN` 的人可以读取你的文档。请只授权那一个仓库，并设置过期时间。
 - 使用 GitHub Actions 须遵守 [GitHub 的条款](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features#actions)。macOS runner 对公开仓库免费，对私有仓库按分钟计费。服务这种用法适合个人少量使用。
 
@@ -185,7 +247,7 @@ PDF 存在只有你能看到的私有仓库里，你自己的这份 pdf-ocr-acti
 
 - 只能在 macOS runner 上运行（Apple 的文字识别在其他系统上不可用）。
 - 每次只能指定一种语言。
-- 服务只读取 `inbox/` 下的 PDF，不读子文件夹；GitHub 不接受超过 100 MB 的文件。
+- 服务只读取收件文件夹下的 PDF，不读它的子文件夹；GitHub 不接受超过 100 MB 的文件。
 
 ### 本地运行
 
