@@ -79,30 +79,34 @@ assert_status "unknown mode exits 2" 2 $?
 "$ocr" "$work/does-not-exist.pdf" "$work/none.pdf" 2>/dev/null
 assert_status "missing input exits 2" 2 $?
 
+seed_remote() { # <name> <inbox dir>: a storage repository with one good and one bad PDF waiting
+  git init -q --bare -b main "$work/$1.git"
+  git clone -q "$work/$1.git" "$work/$1-seed" 2>/dev/null
+  mkdir -p "$work/$1-seed/$2"
+  touch "$work/$1-seed/$2/.gitkeep"
+  cp "$fixtures/english.pdf" "$work/$1-seed/$2/private-scan.pdf"
+  echo "not a pdf" > "$work/$1-seed/$2/private-broken.pdf"
+  git -C "$work/$1-seed" add -A
+  git -C "$work/$1-seed" -c user.name=test -c user.email=test@example.com commit -q -m "seed"
+  git -C "$work/$1-seed" push -q origin HEAD:main
+}
+
 echo "# storage round trip"
-git init -q --bare -b main "$work/remote.git"
-git clone -q "$work/remote.git" "$work/seed" 2>/dev/null
-mkdir -p "$work/seed/inbox"
-touch "$work/seed/inbox/.gitkeep"
-cp "$fixtures/english.pdf" "$work/seed/inbox/private-scan.pdf"
-echo "not a pdf" > "$work/seed/inbox/private-broken.pdf"
-git -C "$work/seed" add -A
-git -C "$work/seed" -c user.name=test -c user.email=test@example.com commit -q -m "seed"
-git -C "$work/seed" push -q origin HEAD:main
+seed_remote remote inbox
 
 (unset STORAGE_REPO STORAGE_TOKEN STORAGE_URL; "$storage" fetch "$work/unconfigured" 2>/dev/null)
 assert_status "fetch without configuration exits 2" 2 $?
 
 export STORAGE_URL="$work/remote.git"
-log=$("$storage" fetch "$work/storage" 2>&1)
+log=$("$storage" fetch "$work/job" 2>&1)
 assert_status "fetch exits 0" 0 $?
 
-log="$log$("$storage" save "$work/storage" "$work/no-results" 2>&1)"
+log="$log$("$storage" save "$work/job" 2>&1)"
 assert_status "save without results exits 0" 0 $?
-if [ -f "$work/storage/inbox/private-scan.pdf" ]; then pass "inbox is untouched when OCR did not run"; else fail "inbox is untouched when OCR did not run"; fi
+if [ -f "$work/job/input/private-scan.pdf" ]; then pass "inbox is untouched when OCR did not run"; else fail "inbox is untouched when OCR did not run"; fi
 
-log="$log$(OCR_QUIET=true "$ocr" "$work/storage/inbox" "$work/results" 2>&1)"
-log="$log$("$storage" save "$work/storage" "$work/results" 2>&1)"
+log="$log$(OCR_QUIET=true "$ocr" "$work/job/input" "$work/job/output" 2>&1)"
+log="$log$("$storage" save "$work/job" 2>&1)"
 assert_status "save exits 0" 0 $?
 
 git clone -q "$work/remote.git" "$work/verify"
@@ -113,14 +117,33 @@ if git -C "$work/verify" log -1 --format=%s | grep -q -F "[skip ci]"; then pass 
 if echo "$log" | grep -q -e "private-" -e "remote.git"; then fail "service log has no file or repository names"; else pass "service log has no file or repository names"; fi
 
 before=$(git -C "$work/verify" rev-parse HEAD)
-rm -rf "$work/storage" "$work/results"
-"$storage" fetch "$work/storage" >/dev/null 2>&1
-OCR_QUIET=true "$ocr" "$work/storage/inbox" "$work/results" >/dev/null 2>&1
-"$storage" save "$work/storage" "$work/results" >/dev/null 2>&1
+"$storage" fetch "$work/job2" >/dev/null 2>&1
+OCR_QUIET=true "$ocr" "$work/job2/input" "$work/job2/output" >/dev/null 2>&1
+"$storage" save "$work/job2" >/dev/null 2>&1
 assert_status "save with an empty inbox exits 0" 0 $?
 git -C "$work/verify" pull -q
 if [ "$before" = "$(git -C "$work/verify" rev-parse HEAD)" ]; then pass "empty inbox creates no commit"; else fail "empty inbox creates no commit"; fi
-unset STORAGE_URL
+
+echo "# custom folders"
+seed_remote custom "scans/to do"
+export STORAGE_URL="$work/custom.git"
+export STORAGE_INBOX="scans/to do" STORAGE_DONE="scans/finished" STORAGE_FAILED="problems"
+log=$("$storage" fetch "$work/job3" 2>&1)
+log="$log$(OCR_QUIET=true "$ocr" "$work/job3/input" "$work/job3/output" 2>&1)"
+log="$log$("$storage" save "$work/job3" 2>&1)"
+assert_status "save with custom folders exits 0" 0 $?
+git clone -q "$work/custom.git" "$work/verify-custom"
+assert_contains "result is pushed to the custom done folder" "$work/verify-custom/scans/finished/private-scan.pdf" "quickbrownfox"
+if [ -f "$work/verify-custom/problems/private-broken.pdf" ]; then pass "bad file is moved to the custom failed folder"; else fail "bad file is moved to the custom failed folder"; fi
+if [ -z "$(ls "$work/verify-custom/scans/to do")" ]; then pass "custom inbox is emptied"; else fail "custom inbox is emptied"; fi
+if [ ! -e "$work/verify-custom/done" ] && [ ! -e "$work/verify-custom/failed" ] && [ ! -e "$work/verify-custom/inbox" ]; then pass "default folders are not created"; else fail "default folders are not created"; fi
+if echo "$log" | grep -q -e "scans" -e "finished" -e "problems"; then fail "service log has no folder names"; else pass "service log has no folder names"; fi
+
+STORAGE_INBOX="../outside" "$storage" fetch "$work/job4" 2>/dev/null
+assert_status "folder outside the repository exits 2" 2 $?
+STORAGE_DONE="scans/to do" "$storage" fetch "$work/job5" 2>/dev/null
+assert_status "inbox and done being the same folder exits 2" 2 $?
+unset STORAGE_URL STORAGE_INBOX STORAGE_DONE STORAGE_FAILED
 
 echo
 echo "$passed passed, $failed failed"

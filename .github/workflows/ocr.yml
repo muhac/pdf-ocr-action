@@ -1,8 +1,8 @@
 name: OCR
 
-# The OCR service: takes PDFs from inbox/ in a private storage repository and
-# puts the searchable results in done/. Configure it with the STORAGE_REPO and
-# STORAGE_TOKEN secrets (see README). Logs never contain file names.
+# The OCR service: takes PDFs from a folder in a private storage repository and
+# puts the searchable results in another. Configure it with the STORAGE_REPO and
+# STORAGE_TOKEN secrets (see README). Logs never contain file or folder names.
 
 on:
   workflow_dispatch:
@@ -36,17 +36,24 @@ jobs:
         env:
           STORAGE_REPO: ${{ secrets.STORAGE_REPO }}
           STORAGE_TOKEN: ${{ secrets.STORAGE_TOKEN }}
-        run: scripts/storage.sh fetch "$RUNNER_TEMP/storage"
+          STORAGE_INBOX: ${{ secrets.STORAGE_INBOX }}
+          STORAGE_DONE: ${{ secrets.STORAGE_DONE }}
+          STORAGE_FAILED: ${{ secrets.STORAGE_FAILED }}
+        run: scripts/storage.sh fetch "$RUNNER_TEMP/ocr"
 
       - name: OCR
         uses: ./
         with:
-          input: ${{ runner.temp }}/storage/inbox
-          output: ${{ runner.temp }}/results
+          input: ${{ runner.temp }}/ocr/input
+          output: ${{ runner.temp }}/ocr/output
           language: ${{ inputs.language || vars.OCR_LANGUAGE || 'eng' }}
           mode: ${{ inputs.mode }}
           quiet: true
 
       - name: Save results
         if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
-        run: scripts/storage.sh save "$RUNNER_TEMP/storage" "$RUNNER_TEMP/results"
+        env:
+          STORAGE_INBOX: ${{ secrets.STORAGE_INBOX }}
+          STORAGE_DONE: ${{ secrets.STORAGE_DONE }}
+          STORAGE_FAILED: ${{ secrets.STORAGE_FAILED }}
+        run: scripts/storage.sh save "$RUNNER_TEMP/ocr"
