@@ -211,6 +211,32 @@ assert_contains "result is pushed from a partial clone" "$work/verify-big/done/p
 if [ "$(git -C "$work/verify-big" rev-parse "HEAD:library/shelf/private-archive.pdf" 2>/dev/null)" = "$archive" ] && [ -f "$work/verify-big/README.md" ]; then pass "files outside the working folders are untouched"; else fail "files outside the working folders are untouched"; fi
 unset STORAGE_URL
 
+echo "# the user empties done/ while OCR is running"
+git init -q --bare -b main "$work/busy.git"
+git -C "$work/busy.git" config uploadpack.allowFilter true
+git -C "$work/busy.git" config uploadpack.allowAnySHA1InWant true
+git clone -q "$work/busy.git" "$work/busy-seed" 2>/dev/null
+mkdir -p "$work/busy-seed/inbox" "$work/busy-seed/done"
+cp "$fixtures/english.pdf" "$work/busy-seed/inbox/private-scan.pdf"
+cp "$fixtures/chinese.pdf" "$work/busy-seed/done/private-earlier.pdf"
+git -C "$work/busy-seed" add -A
+git -C "$work/busy-seed" -c user.name=test -c user.email=test@example.com commit -q -m "seed"
+git -C "$work/busy-seed" push -q origin HEAD:main
+export STORAGE_URL="file://$work/busy.git"
+"$storage" fetch "$work/job-busy" >/dev/null 2>&1
+OCR_QUIET=true "$ocr" "$work/job-busy/input" "$work/job-busy/output" >/dev/null 2>&1
+# Meanwhile the user files the only result out of done/, which git may read as a directory rename.
+mkdir -p "$work/busy-seed/library"
+git -C "$work/busy-seed" mv done/private-earlier.pdf library/private-earlier.pdf
+git -C "$work/busy-seed" -c user.name=test -c user.email=test@example.com commit -q -m "file a book"
+git -C "$work/busy-seed" push -q origin HEAD:main
+"$storage" save "$work/job-busy" >/dev/null 2>&1
+assert_status "save after the user emptied done/ exits 0" 0 $?
+git clone -q "$work/busy.git" "$work/verify-busy"
+assert_contains "result still lands in done/" "$work/verify-busy/done/private-scan.pdf" "quickbrownfox"
+if [ -f "$work/verify-busy/library/private-earlier.pdf" ] && [ ! -e "$work/verify-busy/inbox/private-scan.pdf" ]; then pass "the user's move is kept and the inbox is emptied"; else fail "the user's move is kept and the inbox is emptied"; fi
+unset STORAGE_URL
+
 echo "# large files through releases"
 git init -q --bare -b main "$work/rel.git"
 git clone -q "$work/rel.git" "$work/rel-seed" 2>/dev/null

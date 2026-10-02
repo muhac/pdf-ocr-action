@@ -178,7 +178,12 @@ save_inbox() {
       return 0
     fi
     # Someone pushed while OCR was running: replay our commit on top of theirs.
-    git_as_bot pull -q --rebase
+    # Directory rename detection stays off: when the user files everything out
+    # of done/, git would otherwise insist on moving the new results along too.
+    if ! git_as_bot -c merge.directoryRenames=false pull -q --rebase; then
+      git rebase --abort >/dev/null 2>&1
+      break
+    fi
   done
   echo "::error::Could not push the results to the storage repository."
   return 1
