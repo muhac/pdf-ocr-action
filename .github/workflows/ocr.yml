@@ -25,8 +25,8 @@ on:
       runner:
         description: macOS version to run on
         type: choice
-        options: [macos-26, macos-15]
-        default: macos-26
+        options: [macos-15, macos-26]
+        default: macos-15
       recognition:
         description: "Recognition mode: livetext, accurate or fast"
         type: choice
@@ -48,7 +48,7 @@ env:
 
 jobs:
   ocr:
-    runs-on: ${{ inputs.runner || 'macos-26' }}
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 360  # the most GitHub allows
     steps:
       # The branch name must not show up in this public log. It is read from the

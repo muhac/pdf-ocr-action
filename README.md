@@ -16,7 +16,7 @@ There are two ways to use it:
 ```yaml
 jobs:
   ocr:
-    runs-on: macos-26
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
       - uses: muhac/pdf-ocr-action@v1
@@ -134,7 +134,7 @@ Git does not accept files over 100 MB. Send those through a release of the docum
 
 ### Limits
 
-- macOS runners only (Apple's OCR is not available elsewhere). Tested on `macos-15` and `macos-26`; `macos-14` is not supported.
+- macOS runners only (Apple's OCR is not available elsewhere). Tested on `macos-15` and `macos-26`; `macos-14` is not supported. Prefer `macos-15`: on `macos-26`, Traditional Chinese pages lost much of their text in both `livetext` and `accurate` modes (measured on a 450-page book), while Simplified Chinese was unaffected.
 - One language per PDF.
 - The service reads PDFs directly inside the inbox folder and its language subfolders, nothing deeper. Files larger than 100 MB have to go through a release.
 
@@ -167,7 +167,7 @@ Built on [OCRmyPDF](https://github.com/ocrmypdf/OCRmyPDF) and [OCRmyPDF-AppleOCR
 ```yaml
 jobs:
   ocr:
-    runs-on: macos-26
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
       - uses: muhac/pdf-ocr-action@v1
@@ -285,7 +285,7 @@ Git 不接受超过 100 MB 的文件。这类文件改用文档仓库的 Release
 
 ### 限制
 
-- 只能在 macOS runner 上运行（Apple 的文字识别在其他系统上不可用）。已在 `macos-15` 和 `macos-26` 上测试通过；不支持 `macos-14`。
+- 只能在 macOS runner 上运行（Apple 的文字识别在其他系统上不可用）。已在 `macos-15` 和 `macos-26` 上测试通过；不支持 `macos-14`。 建议用 `macos-15`：在 `macos-26` 上，繁体中文页面在 `livetext` 和 `accurate` 两种模式下都会丢失大量文字（用一本 450 页的书实测），简体中文不受影响。
 - 每份 PDF 只能按一种语言识别。
 - 服务只读取收件文件夹及其语言子文件夹里的 PDF，不读更深的层级。超过 100 MB 的文件需要通过 Release 传递。
 

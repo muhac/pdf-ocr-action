@@ -35,7 +35,7 @@ runs:
       if: runner.os != 'macOS'
       shell: bash
       run: |
-        echo "::error::pdf-ocr-action needs a macOS runner, for example runs-on: macos-26"
+        echo "::error::pdf-ocr-action needs a macOS runner, for example runs-on: macos-15"
         exit 1
 
     - name: Install uv
