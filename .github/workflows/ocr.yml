@@ -18,6 +18,10 @@ on:
         type: choice
         options: [skip, force]
         default: skip
+      branch:
+        description: Branch of the storage repository to work on (empty = its default branch)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -28,12 +32,17 @@ concurrency:
 
 env:
   OCR_LANGUAGE: ${{ inputs.language || vars.OCR_LANGUAGE || 'eng' }}
+  STORAGE_BRANCH: ${{ inputs.branch }}
 
 jobs:
   ocr:
     runs-on: macos-26
     timeout-minutes: 360  # the most GitHub allows
     steps:
+      # The branch name must not show up in this public log.
+      - name: Hide the branch name
+        run: '[ -z "$STORAGE_BRANCH" ] || echo "::add-mask::$STORAGE_BRANCH"'
+
       - uses: actions/checkout@v7
 
       - name: Fetch documents

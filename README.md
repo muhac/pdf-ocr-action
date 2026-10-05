@@ -110,7 +110,7 @@ jobs:
           token: ${{ secrets.SERVICE_TOKEN }}
 ```
 
-`SERVICE_TOKEN` is a second fine-grained token, limited to the service repository with **Actions: Read and write**, saved as a secret in the documents repository. The trigger also accepts `language` and `mode`. The `release` part is only needed for large files, described next; `branches` keeps the tag of a new release from starting a second run.
+`SERVICE_TOKEN` is a second fine-grained token, limited to the service repository with **Actions: Read and write**, saved as a secret in the documents repository. The trigger also accepts `language` and `mode`. With `branch`, the service works on that branch of the documents repository instead of its default branch: results are committed there, so a pull request can be squash-merged to keep the originals out of the default branch's history. The branch name is masked in the service's public log, but choose names that say nothing about the documents anyway. The `release` part is only needed for large files, described next; `branches` keeps the tag of a new release from starting a second run.
 
 #### Files larger than 100 MB
 
@@ -261,7 +261,7 @@ jobs:
           token: ${{ secrets.SERVICE_TOKEN }}
 ```
 
-`SERVICE_TOKEN` 是第二个 fine-grained token，只授权服务仓库，权限选 **Actions: Read and write**，作为 secret 保存在文档仓库里。trigger 还接受 `language` 和 `mode` 两个参数。`release` 那部分只在处理大文件时需要，见下一节；`branches` 是为了避免新 Release 的标签再触发一次运行。
+`SERVICE_TOKEN` 是第二个 fine-grained token，只授权服务仓库，权限选 **Actions: Read and write**，作为 secret 保存在文档仓库里。trigger 还接受 `language` 和 `mode` 两个参数。加上 `branch` 参数，服务会在文档仓库的那个分支上工作而不是默认分支：结果提交到该分支，之后用 squash 合并 PR，原件就不会进入默认分支的历史。分支名在服务的公开日志里会被遮盖，但仍建议分支名不要透露文档内容。`release` 那部分只在处理大文件时需要，见下一节；`branches` 是为了避免新 Release 的标签再触发一次运行。
 
 #### 超过 100 MB 的文件
 

@@ -18,6 +18,9 @@ inputs:
   mode:
     description: "skip: leave pages that already have text alone. force: OCR every page"
     default: skip
+  branch:
+    description: Branch of the documents repository to work on (empty = its default branch)
+    default: ""
 
 runs:
   using: composite
@@ -29,4 +32,5 @@ runs:
         OCR_SERVICE: ${{ inputs.service }}
         OCR_LANGUAGE: ${{ inputs.language }}
         OCR_MODE: ${{ inputs.mode }}
-      run: gh workflow run ocr.yml --repo "$OCR_SERVICE" -f language="$OCR_LANGUAGE" -f mode="$OCR_MODE"
+        OCR_BRANCH: ${{ inputs.branch }}
+      run: gh workflow run ocr.yml --repo "$OCR_SERVICE" -f language="$OCR_LANGUAGE" -f mode="$OCR_MODE" -f branch="$OCR_BRANCH"

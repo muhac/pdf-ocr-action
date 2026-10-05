@@ -260,6 +260,35 @@ assert_contains "result still lands in done/" "$work/verify-busy/done/private-sc
 if [ -f "$work/verify-busy/library/private-earlier.pdf" ] && [ ! -e "$work/verify-busy/inbox/private-scan.pdf" ]; then pass "the user's move is kept and the inbox is emptied"; else fail "the user's move is kept and the inbox is emptied"; fi
 unset STORAGE_URL
 
+echo "# a branch other than the default"
+git init -q --bare -b main "$work/br.git"
+git -C "$work/br.git" config uploadpack.allowFilter true
+git -C "$work/br.git" config uploadpack.allowAnySHA1InWant true
+git clone -q "$work/br.git" "$work/br-seed" 2>/dev/null
+mkdir -p "$work/br-seed/inbox"
+touch "$work/br-seed/inbox/.gitkeep"
+git -C "$work/br-seed" add -A
+git -C "$work/br-seed" -c user.name=test -c user.email=test@example.com commit -q -m "seed"
+git -C "$work/br-seed" push -q origin HEAD:main
+git -C "$work/br-seed" checkout -q -b books-1
+cp "$fixtures/english.pdf" "$work/br-seed/inbox/private-scan.pdf"
+git -C "$work/br-seed" add -A
+git -C "$work/br-seed" -c user.name=test -c user.email=test@example.com commit -q -m "add a book"
+git -C "$work/br-seed" push -q origin books-1
+export STORAGE_URL="file://$work/br.git" STORAGE_BRANCH=books-1
+"$storage" fetch "$work/job-br" >/dev/null 2>&1
+assert_status "fetch of a branch exits 0" 0 $?
+OCR_QUIET=true "$ocr" "$work/job-br/input" "$work/job-br/output" >/dev/null 2>&1
+"$storage" save "$work/job-br" >/dev/null 2>&1
+assert_status "save to a branch exits 0" 0 $?
+git clone -q --branch books-1 "$work/br.git" "$work/verify-br"
+assert_contains "result is pushed to the branch" "$work/verify-br/done/private-scan.pdf" "quickbrownfox"
+if [ ! -e "$work/verify-br/inbox/private-scan.pdf" ]; then pass "branch inbox is emptied"; else fail "branch inbox is emptied"; fi
+if ! git -C "$work/br.git" ls-tree -r --name-only main | grep -q "private-scan"; then pass "main is untouched"; else fail "main is untouched"; fi
+STORAGE_BRANCH="no-such-branch" "$storage" fetch "$work/job-br2" 2>/dev/null
+assert_status "unknown branch exits 2" 2 $?
+unset STORAGE_URL STORAGE_BRANCH
+
 echo "# large files through releases"
 git init -q --bare -b main "$work/rel.git"
 git clone -q "$work/rel.git" "$work/rel-seed" 2>/dev/null

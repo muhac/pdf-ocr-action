@@ -23,6 +23,7 @@
 #   STORAGE_INBOX   folder PDFs are taken from              (default: inbox)
 #   STORAGE_DONE    folder searchable results are put in    (default: done)
 #   STORAGE_FAILED  folder for PDFs that cannot be processed (default: failed)
+#   STORAGE_BRANCH  branch to take PDFs from and push results to (default: the default branch)
 #   OCR_LANGUAGE    language recorded in the log of release files without their own
 set -uo pipefail
 
@@ -114,8 +115,14 @@ fetch() { # <workdir>
   work=$(mkdir -p "$1" && cd "$1" && pwd) || die "Cannot create the work directory."
   # Only the three working folders are downloaded and checked out; the rest of
   # the repository (a document library can be large) stays on the server.
-  git clone -q --depth 1 --filter=blob:none --sparse "$url" "$work/repo" >/dev/null 2>&1 ||
-    die "Cannot access the storage repository. Check STORAGE_REPO and STORAGE_TOKEN."
+  local clone=(git clone -q --depth 1 --filter=blob:none --sparse)
+  case "${STORAGE_BRANCH:-}" in
+    "") ;;
+    -*) die "STORAGE_BRANCH is not a valid branch name." ;;
+    *) clone+=(--branch "$STORAGE_BRANCH") ;;
+  esac
+  "${clone[@]}" "$url" "$work/repo" >/dev/null 2>&1 ||
+    die "Cannot access the storage repository or branch. Check STORAGE_REPO, STORAGE_TOKEN and the branch name."
   git -C "$work/repo" sparse-checkout set "$inbox" "$done_dir" "$failed_dir" >/dev/null 2>&1 ||
     die "Cannot check out the working folders of the storage repository."
   mkdir -p "$work/repo/$inbox"
