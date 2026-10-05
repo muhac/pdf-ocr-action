@@ -22,6 +22,16 @@ on:
         description: Branch of the storage repository to work on (empty = its default branch)
         required: false
         type: string
+      runner:
+        description: macOS version to run on
+        type: choice
+        options: [macos-26, macos-15]
+        default: macos-26
+      recognition:
+        description: "Recognition mode: livetext, accurate or fast"
+        type: choice
+        options: [livetext, accurate, fast]
+        default: livetext
 
 permissions:
   contents: read
@@ -34,10 +44,11 @@ concurrency:
 
 env:
   OCR_LANGUAGE: ${{ inputs.language || vars.OCR_LANGUAGE || 'eng' }}
+  OCR_RECOGNITION: ${{ inputs.recognition || 'livetext' }}
 
 jobs:
   ocr:
-    runs-on: macos-26
+    runs-on: ${{ inputs.runner || 'macos-26' }}
     timeout-minutes: 360  # the most GitHub allows
     steps:
       # The branch name must not show up in this public log. It is read from the
@@ -68,6 +79,7 @@ jobs:
           output: ${{ runner.temp }}/ocr/output
           language: ${{ env.OCR_LANGUAGE }}
           mode: ${{ inputs.mode }}
+          recognition: ${{ env.OCR_RECOGNITION }}
           quiet: true
 
       - name: OCR release files
