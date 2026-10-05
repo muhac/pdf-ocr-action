@@ -31,7 +31,7 @@ env:
 
 jobs:
   ocr:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 360  # the most GitHub allows
     steps:
       - uses: actions/checkout@v7

@@ -16,7 +16,7 @@ There are two ways to use it:
 ```yaml
 jobs:
   ocr:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
       - uses: muhac/pdf-ocr-action@v1
@@ -167,7 +167,7 @@ Built on [OCRmyPDF](https://github.com/ocrmypdf/OCRmyPDF) and [OCRmyPDF-AppleOCR
 ```yaml
 jobs:
   ocr:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
       - uses: muhac/pdf-ocr-action@v1
