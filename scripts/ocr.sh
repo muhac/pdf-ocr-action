@@ -47,8 +47,10 @@ extra=()
 # shellcheck disable=SC2206
 [ -n "${OCR_ARGS:-}" ] && extra=($OCR_ARGS)
 
-ocrmypdf=(uvx --quiet --python 3.13 --exclude-newer "$PACKAGES_AS_OF"
-  --from "ocrmypdf==$OCRMYPDF_VERSION" --with "ocrmypdf-appleocr==$APPLEOCR_VERSION" ocrmypdf)
+environment=(uvx --quiet --python 3.13 --exclude-newer "$PACKAGES_AS_OF"
+  --from "ocrmypdf==$OCRMYPDF_VERSION" --with "ocrmypdf-appleocr==$APPLEOCR_VERSION")
+ocrmypdf=("${environment[@]}" ocrmypdf)
+strip_boxes=("${environment[@]}" python "$(dirname "$0")/strip_boxes.py")
 
 # Fail here, before touching any file, so a broken setup is never mistaken for bad PDFs.
 command -v tesseract >/dev/null || die "tesseract is required by OCRmyPDF (brew install tesseract)"
@@ -72,11 +74,15 @@ ocr_file() { # <source> <destination> <language>; sets $note
   # which happens when an image in the input is damaged. The result is still usable.
   if [ "$status" -eq 4 ] && [ -f "$2" ]; then
     note=" (output did not pass validation)"
-    return 0
+    status=0
   fi
-  # A failed run must leave no half-written output behind.
-  [ "$status" -eq 0 ] || [ "$1" -ef "$2" ] || rm -f "$2"
-  return "$status"
+  if [ "$status" -ne 0 ]; then
+    # A failed run must leave no half-written output behind.
+    [ "$1" -ef "$2" ] || rm -f "$2"
+    return "$status"
+  fi
+  "${strip_boxes[@]}" "$2" >/dev/null 2>&1 || note="$note (text-layer boxes could not be removed)"
+  return 0
 }
 
 if [ ! -d "$input" ]; then

@@ -40,6 +40,10 @@ assert_status "single file exits 0" 0 $?
 assert_contains "english text is recognized" "$work/single/english.pdf" "quickbrownfox"
 assert_contains "digits are recognized" "$work/single/english.pdf" "20481"
 
+echo "# the text layer is invisible"
+report=$(uvx --quiet --python 3.13 --from pikepdf python "$root/tests/check_layer.py" "$work/single/english.pdf" 2>/dev/null)
+if [ "$report" = "drawing_ops=0" ]; then pass "text layer draws nothing"; else fail "text layer draws nothing ($report)"; fi
+
 echo "# directory, Chinese"
 mkdir -p "$work/in"
 cp "$fixtures/chinese.pdf" "$work/in/"
