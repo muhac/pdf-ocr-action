@@ -32,16 +32,19 @@ concurrency:
 
 env:
   OCR_LANGUAGE: ${{ inputs.language || vars.OCR_LANGUAGE || 'eng' }}
-  STORAGE_BRANCH: ${{ inputs.branch }}
 
 jobs:
   ocr:
     runs-on: macos-26
     timeout-minutes: 360  # the most GitHub allows
     steps:
-      # The branch name must not show up in this public log.
+      # The branch name must not show up in this public log. It is read from the
+      # event file rather than an env value, because a step prints its env before
+      # the mask takes effect.
       - name: Hide the branch name
-        run: '[ -z "$STORAGE_BRANCH" ] || echo "::add-mask::$STORAGE_BRANCH"'
+        run: |
+          branch=$(jq -r '.inputs.branch // empty' "$GITHUB_EVENT_PATH")
+          [ -z "$branch" ] || echo "::add-mask::$branch"
 
       - uses: actions/checkout@v7
 
@@ -53,6 +56,7 @@ jobs:
           STORAGE_INBOX: ${{ secrets.STORAGE_INBOX }}
           STORAGE_DONE: ${{ secrets.STORAGE_DONE }}
           STORAGE_FAILED: ${{ secrets.STORAGE_FAILED }}
+          STORAGE_BRANCH: ${{ inputs.branch }}
         run: scripts/storage.sh fetch "$RUNNER_TEMP/ocr"
 
       - name: OCR
