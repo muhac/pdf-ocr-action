@@ -26,8 +26,10 @@ on:
 permissions:
   contents: read
 
+# Runs on the default branch queue behind each other; a run for another branch
+# has its own queue and may run alongside them.
 concurrency:
-  group: ocr
+  group: ocr-${{ inputs.branch }}
   cancel-in-progress: false
 
 env:

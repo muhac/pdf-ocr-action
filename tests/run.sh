@@ -287,6 +287,11 @@ if [ ! -e "$work/verify-br/inbox/private-scan.pdf" ]; then pass "branch inbox is
 if ! git -C "$work/br.git" ls-tree -r --name-only main | grep -q "private-scan"; then pass "main is untouched"; else fail "main is untouched"; fi
 STORAGE_BRANCH="no-such-branch" "$storage" fetch "$work/job-br2" 2>/dev/null
 assert_status "unknown branch exits 2" 2 $?
+mkdir -p "$work/fake-gh-br/releases/v-pending/assets"
+cp "$fixtures/english.pdf" "$work/fake-gh-br/releases/v-pending/assets/waiting.pdf"
+PATH="$root/tests/fake-gh:$PATH" FAKE_GH_DIR="$work/fake-gh-br" STORAGE_REPO=test/storage STORAGE_TOKEN=test-token \
+  "$storage" fetch "$work/job-br3" >/dev/null 2>&1
+if [ ! -e "$work/job-br3/release-input" ]; then pass "a branch run leaves releases alone"; else fail "a branch run leaves releases alone"; fi
 unset STORAGE_URL STORAGE_BRANCH
 
 echo "# large files through releases"

@@ -76,6 +76,9 @@ pending_release_files() {
 fetch_releases() {
   # Only GitHub has releases; a plain clone URL (tests, other hosts) does not.
   [ -n "${STORAGE_REPO:-}" ] || return 0
+  # Releases belong to runs on the default branch; branch runs may run in parallel
+  # and must not race each other for the same release.
+  [ -z "${STORAGE_BRANCH:-}" ] || return 0
   local list languages code tag name label hint language rel count=0 missed=0
   list=$(pending_release_files 2>/dev/null) || {
     echo "::warning::Could not list the releases of the storage repository; skipping them."
