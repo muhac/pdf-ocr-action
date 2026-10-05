@@ -57,21 +57,32 @@ if ! preflight=$("${ocrmypdf[@]}" --version 2>&1); then
   die "could not install or start OCRmyPDF"
 fi
 
-ocr_file() { # <source> <destination> <language>
+ocr_file() { # <source> <destination> <language>; sets $note
   mkdir -p "$(dirname "$2")"
-  local cmd=("${ocrmypdf[@]}" --ocr-engine appleocr --appleocr-recognition-mode "$recognition"
+  local status=0 cmd=("${ocrmypdf[@]}" --ocr-engine appleocr --appleocr-recognition-mode "$recognition"
     -l "$3" --mode "$mode")
   # ${extra[@]+...} keeps bash 3.2 (macOS default) from failing on an empty array under set -u.
   if [ "$quiet" = true ]; then
-    "${cmd[@]}" --quiet ${extra[@]+"${extra[@]}"} "$1" "$2" >/dev/null 2>&1
+    "${cmd[@]}" --quiet ${extra[@]+"${extra[@]}"} "$1" "$2" >/dev/null 2>&1 || status=$?
   else
-    "${cmd[@]}" ${extra[@]+"${extra[@]}"} "$1" "$2"
+    "${cmd[@]}" ${extra[@]+"${extra[@]}"} "$1" "$2" || status=$?
   fi
+  note=""
+  # Exit 4 means the output was written in full but failed OCRmyPDF's validation,
+  # which happens when an image in the input is damaged. The result is still usable.
+  if [ "$status" -eq 4 ] && [ -f "$2" ]; then
+    note=" (output did not pass validation)"
+    return 0
+  fi
+  # A failed run must leave no half-written output behind.
+  [ "$status" -eq 0 ] || [ "$1" -ef "$2" ] || rm -f "$2"
+  return "$status"
 }
 
 if [ ! -d "$input" ]; then
-  ocr_file "$input" "$output" "$language"
-  exit $?
+  ocr_file "$input" "$output" "$language" || exit $?
+  [ -z "$note" ] || echo "Done, but the output did not pass validation; an image in the input may be damaged." >&2
+  exit 0
 fi
 
 input=${input%/}
@@ -101,7 +112,7 @@ for file in "${files[@]}"; do
   label="[$index/$total]"
   [ "$quiet" = true ] || label="$label $name"
   if ocr_file "$file" "$output/$name" "$file_language"; then
-    echo "$label done"
+    echo "$label done$note"
   else
     echo "$label failed"
     failed=$((failed + 1))

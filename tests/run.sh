@@ -79,6 +79,25 @@ assert_status "directory with a bad file exits 1" 1 $?
 assert_contains "good file is still processed" "$work/mixed-out/good.pdf" "quickbrownfox"
 if [ ! -e "$work/mixed-out/broken.pdf" ]; then pass "bad file has no output"; else fail "bad file has no output"; fi
 
+echo "# a damaged image in the input"
+# OCRmyPDF then reports the output as invalid (exit 4) although it wrote it in full.
+uvx --quiet --from pikepdf python - "$fixtures/english.pdf" "$work/truncated.pdf" <<'PY'
+import sys, pikepdf
+with pikepdf.open(sys.argv[1]) as pdf:
+    image = next(iter(pdf.pages[0].images.values()))
+    image.write(image.read_raw_bytes()[:-6], filter=pikepdf.Name.DCTDecode)
+    pdf.save(sys.argv[2])
+PY
+log=$("$ocr" "$work/truncated.pdf" "$work/truncated-out.pdf" 2>&1)
+assert_status "damaged image still exits 0" 0 $?
+assert_contains "damaged image still yields text" "$work/truncated-out.pdf" "quickbrownfox"
+if echo "$log" | grep -q -i "validation"; then pass "damaged image is reported"; else fail "damaged image is reported"; fi
+mkdir -p "$work/damaged-dir"
+cp "$work/truncated.pdf" "$work/damaged-dir/scan.pdf"
+log=$(OCR_QUIET=true "$ocr" "$work/damaged-dir" "$work/damaged-out" 2>&1)
+assert_status "folder with a damaged image exits 0" 0 $?
+if echo "$log" | grep -q "\[1/1\] done" && ! echo "$log" | grep -q "scan"; then pass "quiet mode reports it without the file name"; else fail "quiet mode reports it without the file name"; fi
+
 echo "# quiet mode hides file names"
 mkdir -p "$work/secret"
 cp "$fixtures/english.pdf" "$work/secret/confidential-name.pdf"
