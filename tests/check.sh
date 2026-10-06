@@ -111,9 +111,16 @@ expect "review is summarised" "$work/good.md" "Claude reviewed 1 of 1 flagged pa
 expect "the API key is kept from Claude" "$work/good.md" "Claude reviewed"
 expect "the model is passed on" "$work/claude.log" "--model test-model"
 expect "only the Read tool is allowed" "$work/claude.log" "--allowedTools Read"
-FAKE_CLAUDE_VERDICT=text check good >/dev/null
-expect "missed text is called out" "$work/good.md" "Claude sees text the OCR missed on pages 10"
+expect "each page comes with its OCR text" "$work/claude.log" "book1-page10.png book1-page10.txt"
+expect "the prompt asks to compare image and OCR text" "$work/claude.log" '"missed"'
+FAKE_CLAUDE_VERDICT=missed check good >/dev/null
+expect "missed text is called out" "$work/good.md" "Claude finds text missing from the OCR on pages 10"
 expect "missed text is a warning" "$work/good.md" "| ⚠️ |"
+FAKE_CLAUDE_VERDICT=captured check good >/dev/null
+expect "captured text is listed" "$work/good.md" "pictures: 10 (captured)"
+expect_not "captured text is no warning" "$work/good.md" "| ⚠️ |"
+FAKE_CLAUDE_VERDICT=text check good >/dev/null
+expect_not "an unknown verdict is ignored" "$work/good.md" "(text)"
 FAKE_CLAUDE_SOURCE=ANTHROPIC_API_KEY check good >/dev/null
 expect "an API-key run is discarded" "$work/good.md" "not using the subscription token"
 expect_not "an API-key run adds no verdicts" "$work/good.md" "(illustration)"
@@ -121,6 +128,11 @@ expect_not "an API-key run adds no verdicts" "$work/good.md" "(illustration)"
 check boxed >/dev/null
 check lost --max-pages 3 >/dev/null
 expect "the page budget is kept" "$work/lost.md" "Claude reviewed 3 of 9 flagged pages"
+storage lost30 original lost30
+: > "$work/claude.log"
+check lost30 --max-pages 0 >/dev/null
+expect "a budget of 0 reviews every flagged page" "$work/lost30.md" "Claude reviewed 29 of 29 flagged pages"
+expect_status "pages go to Claude in batches of 10" 3 "$(grep -c -- '^-p ' "$work/claude.log")"
 expect "the prompt asks for a note per page" "$work/claude.log" '"note"'
 FAKE_CLAUDE_NOTE="Three shapes | no text" check good >/dev/null
 expect "the review is collapsible" "$work/good.md" "<details><summary>Claude's review (1 page)</summary>"
@@ -135,6 +147,9 @@ FAKE_CLAUDE_NOTE="三个几何图形，没有文字" check good --language zh >/
 expect "Chinese title" "$work/good.md" "### OCR 检查：通过"
 expect "Chinese table header" "$work/good.md" "| 文件 | 页数 | 书签 | 字数 | 空白页 | 图页 | 可疑页 | 结果 |"
 expect "Chinese verdicts" "$work/good.md" "图页：10（插图）"
+FAKE_CLAUDE_VERDICT=missed check good --language zh >/dev/null
+expect "Chinese missed verdict" "$work/good.md" "Claude 认为这些页漏识别了文字：10"
+FAKE_CLAUDE_NOTE="三个几何图形，没有文字" check good --language zh >/dev/null
 expect "Chinese review table" "$work/good.md" "| book | 10 | 插图 | 三个几何图形，没有文字 |"
 expect "Chinese review summary" "$work/good.md" "Claude 审阅了 1 个标记页面中的 1 个。"
 unset CLAUDE_BIN FAKE_CLAUDE_LOG CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY

@@ -13,8 +13,9 @@ bookmarks, leftover drawing in the text layer, and, page by page, how much text
 was recognised against how much ink is on the page. A page inked like the
 book's text pages but carrying far less text is "suspect" (OCR probably lost
 it); a page with unusual ink and little text is a "picture". With a Claude
-subscription token both can be shown to Claude, who says whether each one is
-blank, an illustration or missed text.
+subscription token both can be shown to Claude next to the text OCR found on
+them, and Claude says whether each one is blank, an illustration, or text that
+OCR captured or missed.
 
 Usage: uv run check.py --repo PATH --commit SHA --report report.md
                        [--inbox inbox] [--done done] [--max-pages 20] [--model M]
@@ -45,7 +46,9 @@ BLANK_INK = 0.5  # percent of dark pixels below which a page counts as empty
 LOW_TEXT = 0.4  # share of the book's usual text per ink below which a page has too little
 TEXT_INK = (0.5, 2.0)  # ink range, relative to the book's text pages, of a page meant to hold text
 NORMAL_PAGE_CHARS = 50
-VERDICTS = ("blank", "illustration", "text")
+VERDICTS = ("blank", "illustration", "captured", "missed")
+BATCH = 10  # pages per conversation with Claude
+IMAGE_EDGE = 1568  # pixels on the long edge of a page image shown to Claude
 
 STRINGS = {
     "en": {
@@ -61,9 +64,9 @@ STRINGS = {
         "systematic": "{count} of {pages} pages have ink but little or no text",
         "no_original": "no original found in the parent commit, so nothing was compared",
         "suspect": "suspect pages: {pages}", "pictures": "pictures: {pages}",
-        "missed": "Claude sees text the OCR missed on pages {pages}",
+        "missed": "Claude finds text missing from the OCR on pages {pages}",
         "page": "{page} ({verdict})", "sep": ", ", "more": " and {count} more",
-        "verdicts": {"blank": "blank", "illustration": "illustration", "text": "text"},
+        "verdicts": {"blank": "blank", "illustration": "illustration", "captured": "captured", "missed": "missed"},
         "review": "Claude's review ({count} {unit})", "units": ("page", "pages"),
         "review_header": "| File | Page | Verdict | Note |",
         "no_token": "Flagged pages were not reviewed: no Claude subscription token is set.",
@@ -86,9 +89,9 @@ STRINGS = {
         "systematic": "{pages} 页中有 {count} 页有墨迹但几乎没有文字",
         "no_original": "上一个提交里没有找到原件，未做对比",
         "suspect": "可疑页：{pages}", "pictures": "图页：{pages}",
-        "missed": "Claude 认为这些页有漏识别的文字：{pages}",
+        "missed": "Claude 认为这些页漏识别了文字：{pages}",
         "page": "{page}（{verdict}）", "sep": "、", "more": "，另有 {count} 页",
-        "verdicts": {"blank": "空白", "illustration": "插图", "text": "文字"},
+        "verdicts": {"blank": "空白", "illustration": "插图", "captured": "已识别", "missed": "漏识别"},
         "review": "Claude 的判断（{count} 页）", "units": ("", ""),
         "review_header": "| 文件 | 页 | 判断 | 说明 |",
         "no_token": "标记的页面未经审阅：没有设置 Claude 订阅 token。",
@@ -233,55 +236,37 @@ def check_book(repo: str, commit: str, path: str, inbox: str, done: str, work: P
     return book
 
 
-def ask_claude(repo: str, commit: str, books: list[Book], max_pages: int, model: str) -> str:
-    """Show suspect pages to Claude. Returns a note for the report."""
-    if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
-        return T["no_token"]
-    # Suspect pages first, then pictures; within each, spread the budget across books.
-    queue = []
-    for kind in ("suspect", "pictures"):
-        pages = [(rank, i, page) for i, book in enumerate(books) for rank, page in enumerate(getattr(book, kind))]
-        queue += [(i, page) for _, i, page in sorted(pages)]
-    if not queue:
-        return ""
-    total = len(queue)
-    queue = queue[:max_pages]
-    with tempfile.TemporaryDirectory() as tmp:
-        folder = Path(tmp) / "pages"
-        folder.mkdir()
-        names = {}
-        for i, book in enumerate(books):
-            wanted = [page for j, page in queue if j == i]
-            if not wanted:
-                continue
-            pdf = Path(tmp) / f"{i}.pdf"
-            show(repo, f"{commit}:{book.path}", pdf)
-            doc = pdfium.PdfDocument(pdf)
-            for page in wanted:
-                name = f"book{i + 1}-page{page}.png"
-                doc[page - 1].render(scale=1.5).to_pil().save(folder / name)
-                names[name] = (i, page)
-            doc.close()
-        prompt = (
-            "Each PNG file listed below is one page of a scanned book. OCR found little or no text "
-            "on these pages. Read every file and classify the page as \"blank\" (empty or nearly empty), "
-            "\"illustration\" (pictures, diagrams, decorations or title art, with at most a few words), or "
-            "\"text\" (lines or paragraphs of printed text that OCR should have recognised). Reply with "
-            "only a JSON object that maps each file name to an object with two keys: \"verdict\", one of "
-            "those three words, and \"note\", one short sentence saying what is on the page, written in "
-            "the language the book is written in.\n\nFiles: "
-            + ", ".join(sorted(names))
+PROMPT = """Each page of a scanned book listed below comes as two files: bookN-pageM.png is an
+image of the page, and bookN-pageM.txt is the text that OCR recognised on that page (it may
+be empty). Read both files for every page and classify the page as:
+
+- "blank": empty or nearly empty;
+- "illustration": pictures, diagrams, decorations or title art, with at most a few words;
+- "captured": the page has printed text and the OCR text contains essentially all of it
+  (small character errors are fine);
+- "missed": the page has printed text that is missing from the OCR text, such as whole
+  lines or paragraphs.
+
+Reply with only a JSON object that maps each page's PNG file name to an object with two
+keys: "verdict", one of those four words, and "note", one short sentence in the language
+the book is written in that says what is on the page and, for "missed", what the OCR text
+lacks.
+
+Pages: {pages}"""
+
+
+def claude_batch(folder: Path, names: list[str], model: str) -> tuple[str | None, str | None]:
+    """Run Claude on one folder of pages. Returns (error note, answer)."""
+    env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
+    try:
+        run = subprocess.run(
+            [os.environ.get("CLAUDE_BIN", "claude"), "-p", PROMPT.format(pages=", ".join(names)),
+             "--model", model, "--allowedTools", "Read", "--max-turns", str(2 * len(names) + 5),
+             "--output-format", "stream-json", "--verbose"],
+            cwd=folder, env=env, capture_output=True, text=True, timeout=1800,
         )
-        env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
-        try:
-            run = subprocess.run(
-                [os.environ.get("CLAUDE_BIN", "claude"), "-p", prompt, "--model", model,
-                 "--allowedTools", "Read", "--max-turns", str(len(names) + 5),
-                 "--output-format", "stream-json", "--verbose"],
-                cwd=folder, env=env, capture_output=True, text=True, timeout=900,
-            )
-        except (OSError, subprocess.TimeoutExpired) as e:
-            return T["not_run"].format(error=e.__class__.__name__)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return T["not_run"].format(error=e.__class__.__name__), None
     source, answer = None, None
     for line in run.stdout.splitlines():
         try:
@@ -293,24 +278,69 @@ def ask_claude(repo: str, commit: str, books: list[Book], max_pages: int, model:
         if event.get("type") == "result" and not event.get("is_error"):
             answer = event.get("result", "")
     if source != "none":
-        return T["not_subscription"].format(source=source)
+        return T["not_subscription"].format(source=source), None
     if answer is None:
-        return T["no_answer"]
-    # The full answer goes to the log of the (private) repository running the check.
-    print(f"Claude's answer:\n{answer}")
-    try:
-        verdicts = json.loads(answer[answer.index("{"): answer.rindex("}") + 1])
-    except ValueError:
-        return T["not_json"]
-    for name, value in verdicts.items():
-        verdict, note = (value.get("verdict"), value.get("note")) if isinstance(value, dict) else (value, None)
-        if name in names and verdict in VERDICTS:
-            i, page = names[name]
-            books[i].verdicts[page] = verdict
-            if isinstance(note, str):
-                books[i].notes[page] = " ".join(note.replace("|", "/").split())
+        return T["no_answer"], None
+    return None, answer
+
+
+def ask_claude(repo: str, commit: str, books: list[Book], max_pages: int, model: str) -> str:
+    """Show flagged pages, with the text OCR found on them, to Claude. Returns a note for the report."""
+    if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        return T["no_token"]
+    # Suspect pages first, then pictures; within each, spread the budget across books.
+    queue = []
+    for kind in ("suspect", "pictures"):
+        pages = [(rank, i, page) for i, book in enumerate(books) for rank, page in enumerate(getattr(book, kind))]
+        queue += [(i, page) for _, i, page in sorted(pages)]
+    if not queue:
+        return ""
+    total = len(queue)
+    if max_pages > 0:
+        queue = queue[:max_pages]
+    problems = []
+    with tempfile.TemporaryDirectory() as tmp:
+        docs = {}
+        for i, book in enumerate(books):
+            if any(j == i for j, _ in queue):
+                show(repo, f"{commit}:{book.path}", Path(tmp) / f"{i}.pdf")
+                docs[i] = pdfium.PdfDocument(Path(tmp) / f"{i}.pdf")
+        # Small batches keep each conversation short, which keeps the judgement sharp.
+        for start in range(0, len(queue), BATCH):
+            folder = Path(tmp) / f"batch{start // BATCH}"
+            folder.mkdir()
+            names = {}
+            for i, page in queue[start:start + BATCH]:
+                stem = f"book{i + 1}-page{page}"
+                pdf_page = docs[i][page - 1]
+                scale = IMAGE_EDGE / max(pdf_page.get_width(), pdf_page.get_height())
+                pdf_page.render(scale=scale).to_pil().save(folder / f"{stem}.png")
+                (folder / f"{stem}.txt").write_text(pdf_page.get_textpage().get_text_range())
+                names[f"{stem}.png"] = (i, page)
+            error, answer = claude_batch(folder, sorted(names), model)
+            if error:
+                problems.append(error)
+                continue
+            # The full answer goes to the log of the (private) repository running the check.
+            print(f"Claude's answer:\n{answer}")
+            try:
+                verdicts = json.loads(answer[answer.index("{"): answer.rindex("}") + 1])
+            except ValueError:
+                problems.append(T["not_json"])
+                continue
+            for name, value in verdicts.items():
+                verdict, note = (value.get("verdict"), value.get("note")) if isinstance(value, dict) else (value, None)
+                if name in names and verdict in VERDICTS:
+                    i, page = names[name]
+                    books[i].verdicts[page] = verdict
+                    if isinstance(note, str):
+                        books[i].notes[page] = " ".join(note.replace("|", "/").split())
+        for doc in docs.values():
+            doc.close()
     reviewed = sum(len(book.verdicts) for book in books)
-    return T["reviewed"].format(reviewed=reviewed, total=total)
+    if not reviewed and problems:
+        return problems[0]
+    return " ".join([T["reviewed"].format(reviewed=reviewed, total=total), *sorted(set(problems))])
 
 
 def short_name(path: str, limit: int = 30) -> str:
@@ -350,7 +380,7 @@ def report(books: list[Book], note: str) -> tuple[str, str]:
             continue
         def pair(result, original):
             return f"{original} → {result}" if book.original_found else f"{result}"
-        mark = "❌" if book.failed else ("⚠️" if any(v == "text" for v in book.verdicts.values()) else "✅")
+        mark = "❌" if book.failed else ("⚠️" if any(v == "missed" for v in book.verdicts.values()) else "✅")
         lines.append(f"| {name} | {pair(book.pages, book.original_pages)} | "
                      f"{pair(book.bookmarks, book.original_bookmarks)} | {book.chars:,} | {len(book.blank)} | "
                      f"{len(book.pictures)} | {len(book.suspect)} | {mark} |")
@@ -364,7 +394,7 @@ def report(books: list[Book], note: str) -> tuple[str, str]:
             details.append(T["suspect"].format(pages=pages_text(book.suspect, book.verdicts)))
         if book.pictures:
             details.append(T["pictures"].format(pages=pages_text(book.pictures, book.verdicts)))
-        missed = [p for p, v in book.verdicts.items() if v == "text"]
+        missed = [p for p, v in book.verdicts.items() if v == "missed"]
         if missed:
             details.append(T["missed"].format(pages=T["sep"].join(map(str, sorted(missed)))))
         if details:
@@ -384,7 +414,7 @@ def main() -> None:
     parser.add_argument("--inbox", default="inbox")
     parser.add_argument("--done", default="done")
     parser.add_argument("--report", required=True)
-    parser.add_argument("--max-pages", type=int, default=20)
+    parser.add_argument("--max-pages", type=int, default=20, help="0 reviews every flagged page")
     parser.add_argument("--model", default="claude-sonnet-5-5")
     parser.add_argument("--language", choices=sorted(STRINGS), default="en")
     args = parser.parse_args()

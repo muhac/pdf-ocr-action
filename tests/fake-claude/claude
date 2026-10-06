@@ -14,6 +14,7 @@ from pathlib import Path
 
 with open(os.environ["FAKE_CLAUDE_LOG"], "a") as log:
     log.write(" ".join(sys.argv[1:]) + "\n")
+    log.write("files: " + " ".join(sorted(p.name for p in Path.cwd().iterdir())) + "\n")
 
 source = "ANTHROPIC_API_KEY" if os.environ.get("ANTHROPIC_API_KEY") else "none"
 source = os.environ.get("FAKE_CLAUDE_SOURCE", source)
