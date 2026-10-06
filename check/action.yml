@@ -29,6 +29,9 @@ inputs:
   max-pages:
     description: Most pages to show to Claude per run
     default: "20"
+  language:
+    description: "Language of the report: en or zh. Claude's notes follow the language of each book"
+    default: en
 
 outputs:
   status:
@@ -66,10 +69,11 @@ runs:
         CHECK_DONE: ${{ inputs.done }}
         CHECK_MODEL: ${{ inputs.model }}
         CHECK_MAX_PAGES: ${{ inputs.max-pages }}
+        CHECK_LANGUAGE: ${{ inputs.language }}
         CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude-token }}
       run: |
         report="$RUNNER_TEMP/ocr-check.md"
         uv run --quiet "$GITHUB_ACTION_PATH/../scripts/check.py" --repo "$CHECK_PATH" --commit "$CHECK_COMMIT" \
           --inbox "$CHECK_INBOX" --done "$CHECK_DONE" --model "$CHECK_MODEL" --max-pages "$CHECK_MAX_PAGES" \
-          --report "$report"
+          --language "$CHECK_LANGUAGE" --report "$report"
         echo "report=$report" >> "$GITHUB_OUTPUT"
