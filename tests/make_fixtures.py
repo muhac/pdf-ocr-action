@@ -50,8 +50,42 @@ def render(font_path: str, lines: list[str]) -> Image.Image:
     return page
 
 
+SENTENCES = [
+    "The quick brown fox jumps over the lazy dog near the river bank.",
+    "Scanned pages become searchable text once a text layer is added.",
+    "Every line on this page is ordinary printed text for the checker.",
+    "A careful reader notices when a page suddenly loses its words.",
+]
+
+
+def text_page() -> Image.Image:
+    font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 36)
+    page = Image.new("L", PAGE, 255)
+    draw = ImageDraw.Draw(page)
+    for i in range(24):
+        draw.text((100, 120 + i * 62), SENTENCES[i % len(SENTENCES)], font=font, fill=0)
+    return page
+
+
+def illustration_page() -> Image.Image:
+    page = Image.new("L", PAGE, 255)
+    draw = ImageDraw.Draw(page)
+    draw.ellipse((200, 300, 700, 800), fill=90)
+    draw.rectangle((600, 700, 1050, 1150), fill=150, outline=0, width=8)
+    draw.polygon([(150, 1500), (550, 1000), (950, 1500)], fill=40)
+    return page
+
+
+def check_pages() -> list[Image.Image]:
+    """A text page, a blank page and an illustration: what the OCR check has to tell apart."""
+    return [text_page(), Image.new("L", PAGE, 255), illustration_page()]
+
+
 if __name__ == "__main__":
     FIXTURES.mkdir(exist_ok=True)
     for name, (font_path, lines) in PAGES.items():
         render(font_path, lines).save(FIXTURES / name, "PDF", resolution=DPI)
         print(f"wrote {FIXTURES / name}")
+    first, *rest = check_pages()
+    first.save(FIXTURES / "pages.pdf", "PDF", resolution=DPI, save_all=True, append_images=rest)
+    print(f"wrote {FIXTURES / 'pages.pdf'} (run scripts/ocr.sh on it to refresh pages.ocr.pdf)")
