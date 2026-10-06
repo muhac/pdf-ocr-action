@@ -2,8 +2,9 @@
 """A stand-in for `claude -p ... --output-format stream-json`, enough for scripts/check.py.
 
 It answers for every PNG in the working directory with $FAKE_CLAUDE_VERDICT
-(default: illustration), reports the credential it would use the way Claude
-Code does, and appends its arguments to $FAKE_CLAUDE_LOG.
+(default: illustration), plus $FAKE_CLAUDE_NOTE as the note when that is set,
+reports the credential it would use the way Claude Code does, and appends its
+arguments to $FAKE_CLAUDE_LOG.
 """
 
 import json
@@ -17,7 +18,8 @@ with open(os.environ["FAKE_CLAUDE_LOG"], "a") as log:
 source = "ANTHROPIC_API_KEY" if os.environ.get("ANTHROPIC_API_KEY") else "none"
 source = os.environ.get("FAKE_CLAUDE_SOURCE", source)
 verdict = os.environ.get("FAKE_CLAUDE_VERDICT", "illustration")
-answer = {p.name: verdict for p in sorted(Path.cwd().glob("*.png"))}
+note = os.environ.get("FAKE_CLAUDE_NOTE")
+answer = {p.name: {"verdict": verdict, "note": note} if note else verdict for p in sorted(Path.cwd().glob("*.png"))}
 
 print(json.dumps({"type": "system", "subtype": "init", "apiKeySource": source, "model": "fake"}))
 print(json.dumps({"type": "result", "is_error": False, "result": "```json\n" + json.dumps(answer) + "\n```"}))

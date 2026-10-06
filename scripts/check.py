@@ -18,9 +18,10 @@ blank, an illustration or missed text.
 
 Usage: uv run check.py --repo PATH --commit SHA --report report.md
                        [--inbox inbox] [--done done] [--max-pages 20] [--model M]
+                       [--language en|zh]
 
-Prints the status (success or failure) as the last line and, inside GitHub
-Actions, also writes it to GITHUB_OUTPUT.
+Prints Claude's answer, if any, then the status (success or failure) as the
+last line; inside GitHub Actions the status also goes to GITHUB_OUTPUT.
 """
 
 import argparse
@@ -46,6 +47,60 @@ TEXT_INK = (0.5, 2.0)  # ink range, relative to the book's text pages, of a page
 NORMAL_PAGE_CHARS = 50
 VERDICTS = ("blank", "illustration", "text")
 
+STRINGS = {
+    "en": {
+        "passed": "### OCR check: passed", "failed": "### OCR check: failed",
+        "no_results": "This commit added no results.",
+        "header": "| File | Pages | Bookmarks | Characters | Blank | Pictures | Suspect | Result |",
+        "unreadable": "result could not be read from the commit",
+        "unopenable": "result could not be opened: {error}",
+        "original_unopenable": "original could not be opened: {error}",
+        "pages": "{original} pages in the original, {result} in the result",
+        "bookmarks": "{original} bookmarks in the original, {result} in the result",
+        "drawing": "the text layer draws {count} visible shapes",
+        "systematic": "{count} of {pages} pages have ink but little or no text",
+        "no_original": "no original found in the parent commit, so nothing was compared",
+        "suspect": "suspect pages: {pages}", "pictures": "pictures: {pages}",
+        "missed": "Claude sees text the OCR missed on pages {pages}",
+        "page": "{page} ({verdict})", "sep": ", ", "more": " and {count} more",
+        "verdicts": {"blank": "blank", "illustration": "illustration", "text": "text"},
+        "review": "Claude's review ({count} {unit})", "units": ("page", "pages"),
+        "review_header": "| File | Page | Verdict | Note |",
+        "no_token": "Flagged pages were not reviewed: no Claude subscription token is set.",
+        "not_run": "Flagged pages were not reviewed: Claude did not run ({error}).",
+        "not_subscription": "Flagged pages were not reviewed: Claude was not using the subscription token (credential: {source}).",
+        "no_answer": "Flagged pages were not reviewed: Claude returned no answer.",
+        "not_json": "Flagged pages were not reviewed: Claude's answer was not JSON.",
+        "reviewed": "Claude reviewed {reviewed} of {total} flagged pages.",
+    },
+    "zh": {
+        "passed": "### OCR 检查：通过", "failed": "### OCR 检查：未通过",
+        "no_results": "这次提交没有新增识别结果。",
+        "header": "| 文件 | 页数 | 书签 | 字数 | 空白页 | 图页 | 可疑页 | 结果 |",
+        "unreadable": "无法从提交中读取结果",
+        "unopenable": "结果无法打开：{error}",
+        "original_unopenable": "原件无法打开：{error}",
+        "pages": "原件 {original} 页，结果 {result} 页",
+        "bookmarks": "原件 {original} 条书签，结果 {result} 条",
+        "drawing": "文字层画出了 {count} 个可见图形",
+        "systematic": "{pages} 页中有 {count} 页有墨迹但几乎没有文字",
+        "no_original": "上一个提交里没有找到原件，未做对比",
+        "suspect": "可疑页：{pages}", "pictures": "图页：{pages}",
+        "missed": "Claude 认为这些页有漏识别的文字：{pages}",
+        "page": "{page}（{verdict}）", "sep": "、", "more": "，另有 {count} 页",
+        "verdicts": {"blank": "空白", "illustration": "插图", "text": "文字"},
+        "review": "Claude 的判断（{count} 页）", "units": ("", ""),
+        "review_header": "| 文件 | 页 | 判断 | 说明 |",
+        "no_token": "标记的页面未经审阅：没有设置 Claude 订阅 token。",
+        "not_run": "标记的页面未经审阅：Claude 没有运行（{error}）。",
+        "not_subscription": "标记的页面未经审阅：Claude 没有使用订阅 token（凭据：{source}）。",
+        "no_answer": "标记的页面未经审阅：Claude 没有给出回答。",
+        "not_json": "标记的页面未经审阅：Claude 的回答不是 JSON。",
+        "reviewed": "Claude 审阅了 {total} 个标记页面中的 {reviewed} 个。",
+    },
+}
+T = STRINGS["en"]
+
 
 @dataclass
 class Book:
@@ -63,6 +118,7 @@ class Book:
     suspect: list[int] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
     verdicts: dict[int, str] = field(default_factory=dict)
+    notes: dict[int, str] = field(default_factory=dict)
 
     @property
     def systematic(self) -> bool:
@@ -151,36 +207,36 @@ def check_book(repo: str, commit: str, path: str, inbox: str, done: str, work: P
     book = Book(path)
     result, original = work / "result.pdf", work / "original.pdf"
     if not show(repo, f"{commit}:{path}", result):
-        book.error = "result could not be read from the commit"
+        book.error = T["unreadable"]
         return book
     book.original_found = show(repo, f"{commit}^:{inbox}/{path[len(done) + 1:]}", original)
     try:
         book.pages, book.bookmarks, book.drawing = structure(result)
         classify(book, page_measures(result))
     except Exception as e:  # a damaged result is a finding, not a crash
-        book.error = f"result could not be opened: {e}"
+        book.error = T["unopenable"].format(error=e)
         return book
     if book.original_found:
         try:
             book.original_pages, book.original_bookmarks, _ = structure(original)
         except Exception as e:
-            book.problems.append(f"original could not be opened: {e}")
+            book.problems.append(T["original_unopenable"].format(error=e))
         else:
             if book.pages != book.original_pages:
-                book.problems.append(f"{book.original_pages} pages in the original, {book.pages} in the result")
+                book.problems.append(T["pages"].format(original=book.original_pages, result=book.pages))
             if book.bookmarks != book.original_bookmarks:
-                book.problems.append(f"{book.original_bookmarks} bookmarks in the original, {book.bookmarks} in the result")
+                book.problems.append(T["bookmarks"].format(original=book.original_bookmarks, result=book.bookmarks))
     if book.drawing:
-        book.problems.append(f"the text layer draws {book.drawing} visible shapes")
+        book.problems.append(T["drawing"].format(count=book.drawing))
     if book.systematic:
-        book.problems.append(f"{len(book.suspect)} of {book.pages} pages have ink but little or no text")
+        book.problems.append(T["systematic"].format(count=len(book.suspect), pages=book.pages))
     return book
 
 
 def ask_claude(repo: str, commit: str, books: list[Book], max_pages: int, model: str) -> str:
     """Show suspect pages to Claude. Returns a note for the report."""
     if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
-        return "Flagged pages were not reviewed: no Claude subscription token is set."
+        return T["no_token"]
     # Suspect pages first, then pictures; within each, spread the budget across books.
     queue = []
     for kind in ("suspect", "pictures"):
@@ -211,7 +267,9 @@ def ask_claude(repo: str, commit: str, books: list[Book], max_pages: int, model:
             "on these pages. Read every file and classify the page as \"blank\" (empty or nearly empty), "
             "\"illustration\" (pictures, diagrams, decorations or title art, with at most a few words), or "
             "\"text\" (lines or paragraphs of printed text that OCR should have recognised). Reply with "
-            "only a JSON object that maps each file name to one of those three words.\n\nFiles: "
+            "only a JSON object that maps each file name to an object with two keys: \"verdict\", one of "
+            "those three words, and \"note\", one short sentence saying what is on the page, written in "
+            "the language the book is written in.\n\nFiles: "
             + ", ".join(sorted(names))
         )
         env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
@@ -223,7 +281,7 @@ def ask_claude(repo: str, commit: str, books: list[Book], max_pages: int, model:
                 cwd=folder, env=env, capture_output=True, text=True, timeout=900,
             )
         except (OSError, subprocess.TimeoutExpired) as e:
-            return f"Flagged pages were not reviewed: Claude did not run ({e.__class__.__name__})."
+            return T["not_run"].format(error=e.__class__.__name__)
     source, answer = None, None
     for line in run.stdout.splitlines():
         try:
@@ -235,19 +293,24 @@ def ask_claude(repo: str, commit: str, books: list[Book], max_pages: int, model:
         if event.get("type") == "result" and not event.get("is_error"):
             answer = event.get("result", "")
     if source != "none":
-        return f"Flagged pages were not reviewed: Claude was not using the subscription token (credential: {source})."
+        return T["not_subscription"].format(source=source)
     if answer is None:
-        return "Flagged pages were not reviewed: Claude returned no answer."
+        return T["no_answer"]
+    # The full answer goes to the log of the (private) repository running the check.
+    print(f"Claude's answer:\n{answer}")
     try:
         verdicts = json.loads(answer[answer.index("{"): answer.rindex("}") + 1])
     except ValueError:
-        return "Flagged pages were not reviewed: Claude's answer was not JSON."
-    for name, verdict in verdicts.items():
+        return T["not_json"]
+    for name, value in verdicts.items():
+        verdict, note = (value.get("verdict"), value.get("note")) if isinstance(value, dict) else (value, None)
         if name in names and verdict in VERDICTS:
             i, page = names[name]
             books[i].verdicts[page] = verdict
+            if isinstance(note, str):
+                books[i].notes[page] = " ".join(note.replace("|", "/").split())
     reviewed = sum(len(book.verdicts) for book in books)
-    return f"Claude reviewed {reviewed} of {total} flagged pages."
+    return T["reviewed"].format(reviewed=reviewed, total=total)
 
 
 def short_name(path: str, limit: int = 30) -> str:
@@ -257,18 +320,29 @@ def short_name(path: str, limit: int = 30) -> str:
 
 
 def pages_text(pages: list[int], verdicts: dict[int, str], limit: int = 30) -> str:
-    shown = ", ".join(f"{p} ({verdicts[p]})" if p in verdicts else str(p) for p in pages[:limit])
-    return shown + (f" and {len(pages) - limit} more" if len(pages) > limit else "")
+    shown = T["sep"].join(T["page"].format(page=p, verdict=T["verdicts"][verdicts[p]]) if p in verdicts else str(p)
+                          for p in pages[:limit])
+    return shown + (T["more"].format(count=len(pages) - limit) if len(pages) > limit else "")
+
+
+def review_table(books: list[Book]) -> list[str]:
+    rows = [f"| {short_name(book.path)} | {page} | {T['verdicts'][book.verdicts[page]]} | {book.notes.get(page, '')} |"
+            for book in books for page in sorted(book.verdicts)]
+    if not rows:
+        return []
+    unit = T["units"][0 if len(rows) == 1 else 1]
+    summary = T["review"].format(count=len(rows), unit=unit)
+    return [f"<details><summary>{summary}</summary>", "", T["review_header"], "| --- | --- | --- | --- |",
+            *rows, "", "</details>", ""]
 
 
 def report(books: list[Book], note: str) -> tuple[str, str]:
     status = "failure" if any(book.failed for book in books) else "success"
-    lines = [f"### OCR check: {'passed' if status == 'success' else 'failed'}", ""]
+    lines = [T["passed"] if status == "success" else T["failed"], ""]
     if not books:
-        lines.append("This commit added no results.")
+        lines.append(T["no_results"])
         return "\n".join(lines) + "\n", status
-    lines += ["| File | Pages | Bookmarks | Characters | Blank | Pictures | Suspect | Result |",
-              "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+    lines += [T["header"], "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for book in books:
         name = short_name(book.path)
         if book.error:
@@ -285,18 +359,19 @@ def report(books: list[Book], note: str) -> tuple[str, str]:
         name = short_name(book.path)
         details = list(book.problems)
         if not book.original_found and not book.error:
-            details.append("no original found in the parent commit, so nothing was compared")
+            details.append(T["no_original"])
         if book.suspect:
-            details.append(f"suspect pages: {pages_text(book.suspect, book.verdicts)}")
+            details.append(T["suspect"].format(pages=pages_text(book.suspect, book.verdicts)))
         if book.pictures:
-            details.append(f"pictures: {pages_text(book.pictures, book.verdicts)}")
+            details.append(T["pictures"].format(pages=pages_text(book.pictures, book.verdicts)))
         missed = [p for p, v in book.verdicts.items() if v == "text"]
         if missed:
-            details.append(f"Claude sees text the OCR missed on pages {', '.join(map(str, sorted(missed)))}")
+            details.append(T["missed"].format(pages=T["sep"].join(map(str, sorted(missed)))))
         if details:
             lines.append(f"**{name}**")
             lines += [f"- {d}" for d in details]
             lines.append("")
+    lines += review_table(books)
     if note:
         lines.append(note)
     return "\n".join(lines).rstrip() + "\n", status
@@ -311,7 +386,10 @@ def main() -> None:
     parser.add_argument("--report", required=True)
     parser.add_argument("--max-pages", type=int, default=20)
     parser.add_argument("--model", default="claude-sonnet-5-5")
+    parser.add_argument("--language", choices=sorted(STRINGS), default="en")
     args = parser.parse_args()
+    global T
+    T = STRINGS[args.language]
     inbox, done = args.inbox.strip("/"), args.done.strip("/")
     commit = git(args.repo, "rev-parse", args.commit).stdout.strip()
     if not commit:

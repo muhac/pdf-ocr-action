@@ -121,7 +121,28 @@ expect_not "an API-key run adds no verdicts" "$work/good.md" "(illustration)"
 check boxed >/dev/null
 check lost --max-pages 3 >/dev/null
 expect "the page budget is kept" "$work/lost.md" "Claude reviewed 3 of 9 flagged pages"
+expect "the prompt asks for a note per page" "$work/claude.log" '"note"'
+FAKE_CLAUDE_NOTE="Three shapes | no text" check good >/dev/null
+expect "the review is collapsible" "$work/good.md" "<details><summary>Claude's review (1 page)</summary>"
+expect "each reviewed page gets a row with its note" "$work/good.md" "| book | 10 | illustration | Three shapes / no text |"
+check good >/dev/null
+expect "an answer without notes still gives verdicts" "$work/good.md" "| book | 10 | illustration |  |"
+full=$(FAKE_CLAUDE_NOTE="Three shapes" uv run --quiet "$root/scripts/check.py" --repo "$work/good" --report "$work/good.md")
+if echo "$full" | grep -q "Three shapes" && [ "$(echo "$full" | tail -1)" = success ]; then pass "Claude's answer is printed for the log, status stays last"; else fail "Claude's answer is printed for the log, status stays last"; fi
+
+echo "# report in Chinese"
+FAKE_CLAUDE_NOTE="三个几何图形，没有文字" check good --language zh >/dev/null
+expect "Chinese title" "$work/good.md" "### OCR 检查：通过"
+expect "Chinese table header" "$work/good.md" "| 文件 | 页数 | 书签 | 字数 | 空白页 | 图页 | 可疑页 | 结果 |"
+expect "Chinese verdicts" "$work/good.md" "图页：10（插图）"
+expect "Chinese review table" "$work/good.md" "| book | 10 | 插图 | 三个几何图形，没有文字 |"
+expect "Chinese review summary" "$work/good.md" "Claude 审阅了 1 个标记页面中的 1 个。"
 unset CLAUDE_BIN FAKE_CLAUDE_LOG CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY
+check short --language zh >/dev/null
+expect "Chinese problems" "$work/short.md" "原件 10 页，结果 9 页"
+expect "Chinese failure title" "$work/short.md" "### OCR 检查：未通过"
+expect "Chinese note without a token" "$work/short.md" "标记的页面未经审阅：没有设置 Claude 订阅 token。"
+expect_status "an unknown language is refused" 2 "$(uv run --quiet "$root/scripts/check.py" --repo "$work/good" --report "$work/x.md" --language fr >/dev/null 2>&1; echo $?)"
 
 echo "# GitHub Actions output"
 GITHUB_OUTPUT="$work/output" check good >/dev/null
