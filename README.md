@@ -112,6 +112,43 @@ jobs:
 
 `SERVICE_TOKEN` is a second fine-grained token, limited to the service repository with **Actions: Read and write**, saved as a secret in the documents repository. The trigger also accepts `language` and `mode`. With `branch`, the service works on that branch of the documents repository instead of its default branch: results are committed there, so a pull request can be squash-merged to keep the originals out of the default branch's history. The branch name is masked in the service's public log, but choose names that say nothing about the documents anyway. The `release` part is only needed for large files, described next; `branches` keeps the tag of a new release from starting a second run.
 
+#### Check the results
+
+After saving, the service sends an `ocr-done` event to your documents repository. With the workflow below in the documents repository, every batch of results is compared with the originals: page count, bookmarks, and page by page how much text was found against how much ink is on the page. Pages that are inked like text but carry little text are counted as *suspect*; if more than a tenth of a book is suspect, the check fails. The report is posted on the pull request (or in the run summary for the default branch), and the commit gets an `ocr-check` status.
+
+```yaml
+name: Check OCR
+
+on:
+  repository_dispatch:
+    types: [ocr-done]
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.client_payload.commit }}
+          fetch-depth: 2
+          filter: blob:none
+          sparse-checkout: done
+      - id: check
+        uses: muhac/pdf-ocr-action/check@v1
+        with:
+          claude-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}  # optional
+      # then post ${{ steps.check.outputs.report }} where you like
+```
+
+Run it in a **private** repository only: the report names your files.
+
+The optional `claude-token` shows flagged pages to Claude, who tells illustrations from text that OCR missed. It takes a subscription token made with `claude setup-token`, never an API key: the check strips API keys from Claude's environment and discards any answer not made with the subscription. Claude Code is pinned, because `--bare`, which ignores subscription tokens, is to become the default for `claude -p`. Page images are sent to Anthropic, and the review uses your subscription's allowance; `max-pages` caps it.
+
 #### Files larger than 100 MB
 
 Git does not accept files over 100 MB. Send those through a release of the documents repository instead, which allows up to 2 GB per file:
@@ -262,6 +299,43 @@ jobs:
 ```
 
 `SERVICE_TOKEN` 是第二个 fine-grained token，只授权服务仓库，权限选 **Actions: Read and write**，作为 secret 保存在文档仓库里。trigger 还接受 `language` 和 `mode` 两个参数。加上 `branch` 参数，服务会在文档仓库的那个分支上工作而不是默认分支：结果提交到该分支，之后用 squash 合并 PR，原件就不会进入默认分支的历史。分支名在服务的公开日志里会被遮盖，但仍建议分支名不要透露文档内容。`release` 那部分只在处理大文件时需要，见下一节；`branches` 是为了避免新 Release 的标签再触发一次运行。
+
+#### 检查识别结果
+
+服务存完结果后，会给文档仓库发一个 `ocr-done` 事件。在文档仓库里加上下面这个 workflow，每批结果都会和原件对比：页数、书签，以及逐页比较识别出的文字量和页面上的墨量。墨量像正文页、文字却很少的页面算作"可疑"；一本书超过十分之一的页面可疑，检查就判为失败。报告会发在 PR 上（默认分支则写在运行摘要里），提交上会多一个 `ocr-check` 状态。
+
+```yaml
+name: Check OCR
+
+on:
+  repository_dispatch:
+    types: [ocr-done]
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.client_payload.commit }}
+          fetch-depth: 2
+          filter: blob:none
+          sparse-checkout: done
+      - id: check
+        uses: muhac/pdf-ocr-action/check@v1
+        with:
+          claude-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}  # 可选
+      # 然后把 ${{ steps.check.outputs.report }} 发到你想要的地方
+```
+
+只在**私有**仓库里运行：报告里有你的文件名。
+
+可选的 `claude-token` 会把可疑页交给 Claude 看，区分插图和漏识别的文字。它只接受 `claude setup-token` 生成的订阅 token，不用 API key：检查会把 API key 从 Claude 的环境里去掉，不是用订阅完成的回答一律丢弃。Claude Code 的版本是固定的，因为会忽略订阅 token 的 `--bare` 模式将来会成为 `claude -p` 的默认行为。页面图片会发送给 Anthropic，用量算在你的订阅额度里，可以用 `max-pages` 限制。
 
 #### 超过 100 MB 的文件
 
