@@ -1,0 +1,75 @@
+name: Check PDF OCR results
+description: Compare the OCR results a commit added with their originals and flag pages that lost text
+author: muhac
+branding:
+  icon: check-square
+  color: blue
+
+inputs:
+  path:
+    description: Checkout of the storage repository
+    default: "."
+  commit:
+    description: Commit that added the results (its parent must hold the originals)
+    default: HEAD
+  inbox:
+    description: Folder the originals were taken from
+    default: inbox
+  done:
+    description: Folder the results were put in
+    default: done
+  claude-token:
+    description: >-
+      Optional Claude subscription token (from `claude setup-token`). When set,
+      flagged pages are shown to Claude. API keys are never used.
+    default: ""
+  model:
+    description: Claude model for reviewing flagged pages
+    default: claude-sonnet-5-5
+  max-pages:
+    description: Most pages to show to Claude per run
+    default: "20"
+
+outputs:
+  status:
+    description: "success or failure"
+    value: ${{ steps.check.outputs.status }}
+  results:
+    description: Number of results the commit added
+    value: ${{ steps.check.outputs.results }}
+  report:
+    description: Path of the Markdown report
+    value: ${{ steps.check.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      with:
+        enable-cache: false
+
+    # Pinned: `--bare` is to become the default for `claude -p`, and bare mode ignores
+    # subscription tokens. Check the release notes before moving this.
+    - name: Install Claude Code
+      if: inputs.claude-token != ''
+      shell: bash
+      run: npm install -g --silent @anthropic-ai/claude-code@2.1.288
+
+    - name: Check
+      id: check
+      shell: bash
+      env:
+        CHECK_PATH: ${{ inputs.path }}
+        CHECK_COMMIT: ${{ inputs.commit }}
+        CHECK_INBOX: ${{ inputs.inbox }}
+        CHECK_DONE: ${{ inputs.done }}
+        CHECK_MODEL: ${{ inputs.model }}
+        CHECK_MAX_PAGES: ${{ inputs.max-pages }}
+        CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude-token }}
+      run: |
+        report="$RUNNER_TEMP/ocr-check.md"
+        uv run --quiet "$GITHUB_ACTION_PATH/../scripts/check.py" --repo "$CHECK_PATH" --commit "$CHECK_COMMIT" \
+          --inbox "$CHECK_INBOX" --done "$CHECK_DONE" --model "$CHECK_MODEL" --max-pages "$CHECK_MAX_PAGES" \
+          --report "$report"
+        echo "report=$report" >> "$GITHUB_OUTPUT"

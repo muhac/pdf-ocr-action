@@ -92,6 +92,7 @@ jobs:
           scripts/ocr.sh "$RUNNER_TEMP/ocr/release-input" "$RUNNER_TEMP/ocr/release-output"
 
       - name: Save results
+        id: save
         if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
         env:
           STORAGE_REPO: ${{ secrets.STORAGE_REPO }}
@@ -100,3 +101,18 @@ jobs:
           STORAGE_DONE: ${{ secrets.STORAGE_DONE }}
           STORAGE_FAILED: ${{ secrets.STORAGE_FAILED }}
         run: scripts/storage.sh save "$RUNNER_TEMP/ocr"
+
+      # Results are committed with [skip ci], so the storage repository is told
+      # directly. A repository that does not listen for ocr-done ignores it.
+      - name: Notify the storage repository
+        if: ${{ !cancelled() && steps.save.outputs.commit != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.STORAGE_TOKEN }}
+          STORAGE_REPO: ${{ secrets.STORAGE_REPO }}
+          RESULT_COMMIT: ${{ steps.save.outputs.commit }}
+          STORAGE_BRANCH: ${{ inputs.branch }}
+        run: |
+          jq -n --arg commit "$RESULT_COMMIT" --arg branch "$STORAGE_BRANCH" \
+            '{event_type: "ocr-done", client_payload: {commit: $commit, branch: $branch}}' |
+            gh api "repos/$STORAGE_REPO/dispatches" --input - >/dev/null 2>&1 ||
+            echo "::warning::Could not notify the storage repository."

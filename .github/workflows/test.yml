@@ -34,3 +34,45 @@ jobs:
         env:
           OCR_RECOGNITION: ${{ matrix.recognition }}
         run: tests/run.sh
+
+  check:
+    name: check / ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: false
+
+      - name: Run the check tests
+        run: tests/check.sh
+
+      - name: Make a storage repository with one result
+        run: |
+          repo="$RUNNER_TEMP/storage"
+          git init -q -b main "$repo"
+          mkdir -p "$repo/inbox/chi_sim" "$repo/done/chi_sim"
+          uv run --quiet --python 3.13 --with pikepdf==10.16.0 python tests/check_cases.py original "$repo/inbox/chi_sim/book.pdf"
+          git -C "$repo" add -A
+          git -C "$repo" -c user.name=test -c user.email=test@example.com commit -q -m "add"
+          git -C "$repo" rm -q inbox/chi_sim/book.pdf
+          uv run --quiet --python 3.13 --with pikepdf==10.16.0 python tests/check_cases.py result "$repo/done/chi_sim/book.pdf"
+          git -C "$repo" add -A
+          git -C "$repo" -c user.name=test -c user.email=test@example.com commit -q -m "process"
+
+      - name: Run the check action
+        id: check
+        uses: ./check
+        with:
+          path: ${{ runner.temp }}/storage
+
+      - name: Verify the check action
+        env:
+          STATUS: ${{ steps.check.outputs.status }}
+          RESULTS: ${{ steps.check.outputs.results }}
+          REPORT: ${{ steps.check.outputs.report }}
+        run: |
+          cat "$REPORT"
+          [ "$STATUS" = success ] && [ "$RESULTS" = 1 ] && grep -q -F "| book | 10 → 10 | 2 → 2 |" "$REPORT"
