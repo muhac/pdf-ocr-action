@@ -143,10 +143,12 @@ assert_status "save without results exits 0" 0 $?
 if [ -f "$work/job/input/private-scan.pdf" ]; then pass "inbox is untouched when OCR did not run"; else fail "inbox is untouched when OCR did not run"; fi
 
 log="$log$(OCR_QUIET=true "$ocr" "$work/job/input" "$work/job/output" 2>&1)"
-log="$log$("$storage" save "$work/job" 2>&1)"
+log="$log$(GITHUB_OUTPUT="$work/job-output" "$storage" save "$work/job" 2>&1)"
 assert_status "save exits 0" 0 $?
 
 git clone -q "$work/remote.git" "$work/verify"
+if grep -q "^commit=$(git -C "$work/verify" rev-parse HEAD)$" "$work/job-output" 2>/dev/null; then pass "the pushed commit is reported to the workflow"; else fail "the pushed commit is reported to the workflow"; fi
+if grep -q "^saved=1$" "$work/job-output" 2>/dev/null; then pass "the number of results is reported to the workflow"; else fail "the number of results is reported to the workflow"; fi
 assert_contains "result is pushed to done/" "$work/verify/done/private-scan.pdf" "quickbrownfox"
 if [ -f "$work/verify/failed/private-broken.pdf" ]; then pass "bad file is moved to failed/"; else fail "bad file is moved to failed/"; fi
 if [ -z "$(ls "$work/verify/inbox")" ] && [ -f "$work/verify/inbox/.gitkeep" ]; then pass "inbox is emptied but kept"; else fail "inbox is emptied but kept"; fi
@@ -156,8 +158,9 @@ if echo "$log" | grep -q -e "private-" -e "remote.git"; then fail "service log h
 before=$(git -C "$work/verify" rev-parse HEAD)
 "$storage" fetch "$work/job2" >/dev/null 2>&1
 OCR_QUIET=true "$ocr" "$work/job2/input" "$work/job2/output" >/dev/null 2>&1
-"$storage" save "$work/job2" >/dev/null 2>&1
+GITHUB_OUTPUT="$work/job2-output" "$storage" save "$work/job2" >/dev/null 2>&1
 assert_status "save with an empty inbox exits 0" 0 $?
+if ! grep -q "^commit=" "$work/job2-output" 2>/dev/null; then pass "nothing pushed, no commit reported"; else fail "nothing pushed, no commit reported"; fi
 git -C "$work/verify" pull -q
 if [ "$before" = "$(git -C "$work/verify" rev-parse HEAD)" ]; then pass "empty inbox creates no commit"; else fail "empty inbox creates no commit"; fi
 

@@ -185,6 +185,8 @@ save_inbox() {
   for _ in 1 2 3; do
     if git push -q origin HEAD >/dev/null 2>&1; then
       echo "Saved $saved result(s), $failed failed."
+      # Lets the workflow tell the storage repository which commit to check.
+      [ -z "${GITHUB_OUTPUT:-}" ] || printf 'commit=%s\nsaved=%s\n' "$(git rev-parse HEAD)" "$saved" >> "$GITHUB_OUTPUT"
       return 0
     fi
     # Someone pushed while OCR was running: replay our commit on top of theirs.
