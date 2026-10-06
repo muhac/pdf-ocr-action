@@ -27,7 +27,7 @@ inputs:
     description: Claude model for reviewing flagged pages
     default: claude-sonnet-5-5
   max-pages:
-    description: Most pages to show to Claude per run
+    description: Most pages to show to Claude per run; 0 shows every flagged page
     default: "20"
   language:
     description: "Language of the report: en or zh. Claude's notes follow the language of each book"

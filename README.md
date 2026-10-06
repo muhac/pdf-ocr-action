@@ -147,7 +147,7 @@ jobs:
 
 Run it in a **private** repository only: the report names your files.
 
-The optional `claude-token` shows flagged pages to Claude, who tells illustrations from text that OCR missed and adds a one-line note per page, in the book's language, in a collapsible table; its full answer is printed in the run log. `language: zh` writes the report in Chinese. It takes a subscription token made with `claude setup-token`, never an API key: the check strips API keys from Claude's environment and discards any answer not made with the subscription. Claude Code is pinned, because `--bare`, which ignores subscription tokens, is to become the default for `claude -p`. Page images are sent to Anthropic, and the review uses your subscription's allowance; `max-pages` caps it.
+The optional `claude-token` shows each flagged page to Claude next to the text OCR found on it. Claude calls the page blank, an illustration, or text that OCR *captured* or *missed*, and adds a one-line note in the book's language; the verdicts go into a collapsible table, and Claude's full answer into the run log. Pages go to Claude ten at a time; `max-pages` caps how many (`0` reviews them all). `language: zh` writes the report in Chinese. It takes a subscription token made with `claude setup-token`, never an API key: the check strips API keys from Claude's environment and discards any answer not made with the subscription. Claude Code is pinned, because `--bare`, which ignores subscription tokens, is to become the default for `claude -p`. Page images are sent to Anthropic, and the review uses your subscription's allowance; `max-pages` caps it.
 
 #### Files larger than 100 MB
 
@@ -335,7 +335,7 @@ jobs:
 
 只在**私有**仓库里运行：报告里有你的文件名。
 
-可选的 `claude-token` 会把可疑页交给 Claude 看，区分插图和漏识别的文字，并为每页写一句说明（用书本身的语言），放在报告里一个可折叠的表格中；它的完整回答会打印在运行日志里。`language: zh` 让报告用中文。它只接受 `claude setup-token` 生成的订阅 token，不用 API key：检查会把 API key 从 Claude 的环境里去掉，不是用订阅完成的回答一律丢弃。Claude Code 的版本是固定的，因为会忽略订阅 token 的 `--bare` 模式将来会成为 `claude -p` 的默认行为。页面图片会发送给 Anthropic，用量算在你的订阅额度里，可以用 `max-pages` 限制。
+可选的 `claude-token` 会把每个被标记的页面连同识别出的文字一起交给 Claude 对照。Claude 判断这一页是空白、插图，还是文字已识别或漏识别，并用书本身的语言写一句说明；判断放在报告里一个可折叠的表格中，完整回答打印在运行日志里。页面每 10 页一批交给 Claude，`max-pages` 限制总页数（`0` 表示全部审阅）。`language: zh` 让报告用中文。它只接受 `claude setup-token` 生成的订阅 token，不用 API key：检查会把 API key 从 Claude 的环境里去掉，不是用订阅完成的回答一律丢弃。Claude Code 的版本是固定的，因为会忽略订阅 token 的 `--bare` 模式将来会成为 `claude -p` 的默认行为。页面图片会发送给 Anthropic，用量算在你的订阅额度里，可以用 `max-pages` 限制。
 
 #### 超过 100 MB 的文件
 
