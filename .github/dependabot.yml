@@ -6,9 +6,6 @@ updates:
       - /check
     schedule:
       interval: weekly
-    labels:
-      - dependencies
-      - github-actions
     groups:
       github-actions-minor-patch:
         update-types:
