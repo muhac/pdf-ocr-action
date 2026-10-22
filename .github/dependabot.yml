@@ -1,0 +1,21 @@
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # "/" covers .github/workflows and the root action.yml; the composite
+  # actions in subfolders have to be listed on their own.
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/check"
+      - "/trigger"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
